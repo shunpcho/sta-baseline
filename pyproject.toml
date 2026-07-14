@@ -1,0 +1,108 @@
+[project]
+name = "sta-baseline"
+version = "0.1.0"
+description = "Object detection and slowfast to solve short term anticipation."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+]
+
+[dependency-groups]
+dev = ["ipython>=9.5.0", "pyright>=1.1.408", "ruff>=0.13.1"]
+test = ["pytest>=8.0.0", "pytest-cov>=6.0.0", "pytest-mock>=3.14.0"]
+lint = ["ruff>=0.13.1", "pyright>=1.1.410", "flake8>=7.3.0", "codespell>=2.4.2"]
+
+[build-system]
+requires = ["uv_build<=0.9.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "sta_baseline"
+
+[project.scripts]
+train = "sta_baseline.train:main"
+
+[tool.ruff]
+line-length = 120
+exclude = [
+    "__pycache__",
+    ".venv",
+    ".git",
+    ".github",
+    ".idea",
+    "templates",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    "*_pb2.py",
+    "*_pb2_grpc.py",
+]
+
+[tool.ruff.lint]
+preview = true
+select = ["ALL"]
+ignore = [
+    "COM812",
+    "CPY",
+    "D1",
+    "DOC201",
+    "D203",
+    "D213",
+    "DTZ005",
+    "ERA001",
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    "FIX",
+    "G004",
+    "ISC001",
+    "PLW2901",
+    "RET504",
+    "RET505",
+    "RET508",
+    "S",
+    "TD001",
+    "TD002",
+    "TD003",
+    "T201",
+    "EM101",   # Exception must not use a string literal. Assigning to a variable first adds noise.
+    "EM102",   # Exception must not use an f-string literal. Same rationale as EM101.
+    "TRY003",  # Avoid specifying long messages outside the exception class.
+    "N812",    # albumentations as A is the idiomatic convention for this library.
+    "PLR6301", # nn.Module.forward must be an instance method; cannot be static.
+    "PLC0415", # Lazy imports for optional heavy dependencies (lpips, pytorch-msssim) are intentional.
+    "NPY002",  # np.random.seed is used only for reproducibility seeding; Generator API not needed here.
+    "RUF200",  # Error originates from templates/pyproject.toml, not this file.
+    "TC001",   # from __future__ import annotations makes moving app imports to TYPE_CHECKING redundant.
+    "TC002",   # Same rationale as TC001.
+    "TC003",   # Same rationale as TC001.
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-statements = 60
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "S101"]
+"scripts/**/*.py" = ["INP001"]
+
+[tool.ruff.lint.isort]
+order-by-type = false
+known-first-party = ["sta_baseline"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pyright]
+pythonVersion = "3.14"
+pythonPlatform = "Linux"
+typeCheckingMode = "strict"
+reportUnnecessaryComparison = "warning"
+reportUnnecessaryTypeIgnoreComment = "warning"
+reportUnknownMemberType = false
+reportMissingTypeStubs = false
