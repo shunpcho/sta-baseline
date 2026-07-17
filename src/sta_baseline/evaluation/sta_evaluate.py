@@ -186,7 +186,13 @@ class AbstractMeanAveragePrecision(ABC):
                     # Get overlaps related to this predictions
                     overlaps = ious[i].reshape(-1, 1)
 
-                    pred_dict = Prediction(**{k: np.asarray(p)[i] for k, p in preds.items()})
+                    pred_dict = Prediction(
+                        box=np.asarray(preds["boxes"])[i],
+                        score=np.asarray(preds["scores"])[i],
+                        noun=np.asarray(preds["nouns"])[i],
+                        verb=np.asarray(preds["verbs"])[i],
+                        ttc=np.asarray(preds["ttcs"])[i],
+                    )
                     matchings = self._match(pred_dict, labels, overlaps)
 
                     # Replicate overlaps to match shape of matchings (different AP metrics).
@@ -225,7 +231,7 @@ class AbstractMeanAveragePrecision(ABC):
 
                     sorted_fp = 1 - sorted_tp
 
-                    sorted_tp[sorted_fp.cumsum(axis=0) <= k_full] = np.nan
+                    sorted_tp[(sorted_fp.cumsum(axis=0) <= k_full) & (sorted_fp == 1)] = np.nan
 
                     true_positives = sorted_tp
                     predicted_scores = predicted_scores[order]
@@ -254,7 +260,7 @@ class AbstractMeanAveragePrecision(ABC):
         Returns:
             The mapped class labels as a numpy array.
         """
-        return np.vstack([preds_labels["nouns"] * self.num_aps]).astype(np.uint16).T
+        return np.vstack([preds_labels["nouns"]] * self.num_aps).astype(np.uint16).T
 
     def _compute_precision_recall(
         self,
@@ -363,21 +369,21 @@ class AbstractMeanAveragePrecision(ABC):
             # The different per-class AP values.
             measures: list[npt.NDArray[np.float32] | float] = []
 
-            gt_classes = gt_classes[:, i]
-            predicted_classes = predicted_classes[:, i]
-            true_positives = true_positives[:, i]
+            _gt_classes = gt_classes[:, i]
+            _predicted_classes = predicted_classes[:, i]
+            _true_positives = true_positives[:, i]
 
             if self.count_all_classes:
-                classes = np.unique(np.concatenate([gt_classes, predicted_classes]))
+                classes = np.unique(np.concatenate([_gt_classes, _predicted_classes]))
             else:
-                classes = np.unique(gt_classes)
+                classes = np.unique(_gt_classes)
 
             # Iterate over each class to compute the metric.
             for cla in classes:
                 # Get the true positives and number of ground truth labels.
-                true_positive = true_positives[predicted_classes == cla]
-                confidence_score = confidence_scores[predicted_classes == cla]
-                num_gt = np.sum(gt_classes == cla)
+                true_positive = _true_positives[_predicted_classes == cla]
+                confidence_score = confidence_scores[_predicted_classes == cla]
+                num_gt = np.sum(_gt_classes == cla)
 
                 # Check if the list of true positives is non-empty.
                 if len(true_positive) > 0:
@@ -560,6 +566,7 @@ class OverallMeanAveragePrecision(AbstractMeanAveragePrecision):
                 ones,  # ap_box_noun_verb - do not average
                 ones,  # ap_box_noun_ttc - do not average
                 ones,  # ap_box_verb_ttc - do not average
+                ones,  # ap_box_noun_verb_ttc - do not average
                 nouns,  # map_box_noun - average over nouns
                 nouns,  # map_box_noun_verb - average over nouns
                 nouns,  # map_box_noun_ttc - average over nouns
