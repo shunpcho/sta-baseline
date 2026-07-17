@@ -369,21 +369,21 @@ class AbstractMeanAveragePrecision(ABC):
             # The different per-class AP values.
             measures: list[npt.NDArray[np.float32] | float] = []
 
-            _gt_classes = gt_classes[:, i]
-            _predicted_classes = predicted_classes[:, i]
-            _true_positives = true_positives[:, i]
+            gt_classes_i = gt_classes[:, i]
+            predicted_classes_i = predicted_classes[:, i]
+            true_positives_i = true_positives[:, i]
 
             if self.count_all_classes:
-                classes = np.unique(np.concatenate([_gt_classes, _predicted_classes]))
+                classes = np.unique(np.concatenate([gt_classes_i, predicted_classes_i]))
             else:
-                classes = np.unique(_gt_classes)
+                classes = np.unique(gt_classes_i)
 
             # Iterate over each class to compute the metric.
             for cla in classes:
                 # Get the true positives and number of ground truth labels.
-                true_positive = _true_positives[_predicted_classes == cla]
-                confidence_score = confidence_scores[_predicted_classes == cla]
-                num_gt = np.sum(_gt_classes == cla)
+                true_positive = true_positives_i[predicted_classes_i == cla]
+                confidence_score = confidence_scores[predicted_classes_i == cla]
+                num_gt = np.sum(gt_classes_i == cla)
 
                 # Check if the list of true positives is non-empty.
                 if len(true_positive) > 0:

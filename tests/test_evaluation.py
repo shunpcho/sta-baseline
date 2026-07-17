@@ -167,20 +167,20 @@ class _RefAbstractMAP(ABC):
 
         for i in range(self.num_aps):
             measures: list[float] = []
-            _gt_classes = gt_classes[:, i]
-            _predicted_classes = predicted_classes[:, i]
-            _true_positives = true_positives[:, i]
+            gt_classes_i = gt_classes[:, i]
+            predicted_classes_i = predicted_classes[:, i]
+            true_positives_i = true_positives[:, i]
             _confidence_scores = confidence_scores
 
             if self.count_all_classes:
-                classes = np.unique(np.concatenate([_gt_classes, _predicted_classes]))
+                classes = np.unique(np.concatenate([gt_classes_i, predicted_classes_i]))
             else:
-                classes = np.unique(_gt_classes)
+                classes = np.unique(gt_classes_i)
 
             for c in classes:
-                tp = _true_positives[_predicted_classes == c]
-                cs = _confidence_scores[_predicted_classes == c]
-                ngt = int(np.sum(_gt_classes == c))
+                tp = true_positives_i[predicted_classes_i == c]
+                cs = _confidence_scores[predicted_classes_i == c]
+                ngt = int(np.sum(gt_classes_i == c))
 
                 if len(tp) > 0:
                     valid = ~np.isnan(tp)
