@@ -5,7 +5,7 @@ This is replica of Ego4D [forcasting/SHORT_TERM_ANTICIPATION.md](https://github.
 
 ## Tasks
 
-動画中の全探索ではなく、特定のタイムスタンプごとに予測を行う。
+一人称の動画から人が何をしようとしているかを予測する。動画中の全探索ではなく、特定のタイムスタンプごとに予測を行う。
 
 - (主観者が次に作用する)オブジェクトのbbox
 - (主観者が次に作用する)オブジェクトのカテゴリ
@@ -24,7 +24,7 @@ This system has three steps to solve the tasks.
 
 ### 1. Extract 32 frames
 
-動画のAnnotationから前の32フレームを抽出する。
+動画のAnnotationから前の32フレームを抽出する。（事前にフレーム抽出とアノテーションの作り替えが必要。）
 
 ### 2. Object Detection
 
@@ -70,6 +70,8 @@ Annotationには以下の情報が含まれる。
 ```
 
 - Contents of `"objects"`
+  - The `verb` has 98 classes.
+  - The `noun` has 301 classes.
 
 ```json
 {
@@ -81,6 +83,7 @@ Annotationには以下の情報が含まれる。
 ```
 
 - Contents of `"video_metadata"`
+  It contains full scale resolution. For example, 1920x1080(1080p), 1280x720(720p)
 
 ```json
 "video_metadata": {
