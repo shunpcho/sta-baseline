@@ -7,14 +7,6 @@ import numpy as np
 import numpy.typing as npt
 
 
-class BoundingBox(NamedTuple):
-    """A bounding box represented by its coordinates."""
-
-    x_1: int
-    y_1: int
-    x_2: int
-    y_2: int
-
 
 class PredictionsFormat(TypedDict):
     boxes: npt.NDArray[np.uint16]
