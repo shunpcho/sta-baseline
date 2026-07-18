@@ -339,9 +339,9 @@ class TestComputeIou:
         iou = compute_iou(preds, gts)
         assert iou.shape == (3, 2)
 
-    def test_output_dtype_is_float32(self) -> None:
+    def test_output_dtype_is_float64(self) -> None:
         iou = compute_iou([[0, 0, 9, 9]], [[0, 0, 9, 9]])
-        assert iou.dtype == np.float32
+        assert iou.dtype == np.float64
 
     def test_iou_values_are_in_zero_one_range(self) -> None:
         preds = [[0, 0, 9, 9], [100, 100, 200, 200]]
