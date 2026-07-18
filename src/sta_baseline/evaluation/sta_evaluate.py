@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import NamedTuple, TypedDict
+from typing import TypedDict
 
 import numpy as np
 import numpy.typing as npt
-
 
 
 class PredictionsFormat(TypedDict):
