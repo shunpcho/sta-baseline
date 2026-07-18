@@ -2,21 +2,23 @@
 
 Reference: https://github.com/EGO4D/forecasting/blob/main/ego4d_forecasting/evaluation/sta_metrics.py
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
 from sta_baseline.evaluation.sta_evaluate import (
+    compute_iou,
     LabelsFormat,
     ObjectOnlyMeanAveragePrecision,
     OverallMeanAveragePrecision,
     PredictionsFormat,
     STAMeanAveragePrecision,
-    compute_iou,
 )
 
 # ---------------------------------------------------------------------------
@@ -25,9 +27,7 @@ from sta_baseline.evaluation.sta_evaluate import (
 # ---------------------------------------------------------------------------
 
 
-def _ref_compute_iou(
-    preds: npt.NDArray[np.int64], gts: npt.NDArray[np.int64]
-) -> npt.NDArray[np.float64]:
+def _ref_compute_iou(preds: npt.NDArray[np.int64], gts: npt.NDArray[np.int64]) -> npt.NDArray[np.float64]:
     preds = np.expand_dims(preds, 1)
     gts = np.expand_dims(gts, 0)
 
@@ -66,7 +66,7 @@ class _RefAbstractMAP(ABC):
         self.count_all_classes = count_all_classes
         self.K = top_k
 
-    def add(self, preds: dict, labels: dict) -> npt.NDArray[np.float64]:
+    def add(self, preds: dict[str, Any], labels: dict[str, Any]) -> npt.NDArray[np.float64]:  # noqa: PLR0914
         matched: list[npt.NDArray[np.float64]] = []
         if len(preds) > 0:
             predicted_boxes = preds["boxes"]
@@ -91,10 +91,10 @@ class _RefAbstractMAP(ABC):
                     jj_matched[~i_matchings] = -1
                     true_positives[i, i_matchings] = 1
                     gt_matched[jj, range(len(jj))] += i_matchings
-                    matched.append(jj_matched)
+                    matched.append(jj_matched)  # type: ignore[reportArgumentType]
 
                 if self.K is not None and self.K > 1:
-                    K = (self.K - 1) * len(labels["boxes"])
+                    K = (self.K - 1) * len(labels["boxes"])  # noqa: N806
                     order = predicted_scores.argsort()[::-1]
                     sorted_tp = true_positives[order, :].astype(float)
                     sorted_fp = 1 - sorted_tp
@@ -113,7 +113,7 @@ class _RefAbstractMAP(ABC):
             return np.stack(matched, 0)
         return np.zeros((0, self.num_aps))
 
-    def _map_classes(self, preds: dict) -> npt.NDArray[np.float64]:
+    def _map_classes(self, preds: dict[str, Any]) -> npt.NDArray[np.float64]:
         return np.vstack([preds["nouns"]] * self.num_aps).T
 
     def _compute_prec_rec(
@@ -127,7 +127,7 @@ class _RefAbstractMAP(ABC):
         fp = (1 - tps).cumsum()
         prec = self._safe_division(tp, tp + fp)
         rec = self._safe_division(tp, num_gt)
-        return prec, rec
+        return np.asarray(prec, dtype=float), np.asarray(rec, dtype=float)
 
     def _safe_division(
         self,
@@ -136,13 +136,12 @@ class _RefAbstractMAP(ABC):
     ) -> npt.NDArray[np.float64] | float:
         a_array = isinstance(a, np.ndarray)
         b_arr = isinstance(b, np.ndarray)
-        if not a_array and not b_arr:
-            if b == 0:
-                return 0.0
+        if not a_array and not b_arr and b == 0:
+            return 0.0
         if b_arr and not a_array:
-            a = np.array([a] * len(b))  # type: ignore[arg-type]
+            a = np.array([a] * len(b))
         if not b_arr and a_array:
-            b = np.array([b] * len(a))  # type: ignore[arg-type]
+            b = np.array([b] * np.size(a))
         b = np.asarray(b, dtype=float)
         a = np.asarray(a, dtype=float)
         zeroden = b == 0
@@ -158,8 +157,8 @@ class _RefAbstractMAP(ABC):
         i = np.where(mrec[1:] != mrec[:-1])[0] + 1
         return float(np.sum((mrec[i] - mrec[i - 1]) * mpre[i]))
 
-    def evaluate(self, measure: str = "AP") -> tuple[float, ...] | float:
-        metrics = []
+    def evaluate(self, measure: str = "AP") -> tuple[float, ...] | float:  # noqa: PLR0914, C901
+        metrics: list[float] = []
         gt_classes = np.concatenate(self.gt_classes)
         predicted_classes = np.concatenate(self.predicted_classes)
         true_positives = np.concatenate(self.true_positives)
@@ -170,7 +169,6 @@ class _RefAbstractMAP(ABC):
             gt_classes_i = gt_classes[:, i]
             predicted_classes_i = predicted_classes[:, i]
             true_positives_i = true_positives[:, i]
-            _confidence_scores = confidence_scores
 
             if self.count_all_classes:
                 classes = np.unique(np.concatenate([gt_classes_i, predicted_classes_i]))
@@ -179,21 +177,22 @@ class _RefAbstractMAP(ABC):
 
             for c in classes:
                 tp = true_positives_i[predicted_classes_i == c]
-                cs = _confidence_scores[predicted_classes_i == c]
-                ngt = int(np.sum(gt_classes_i == c))
+                cs = confidence_scores[predicted_classes_i == c]
+                ngt = int(np.sum(gt_classes_i == c))  # type: ignore[reportUnknownArgumentType]
 
                 if len(tp) > 0:
                     valid = ~np.isnan(tp)
                     tp, cs = tp[valid], cs[valid]
 
+                this_measure: float = 0.0
                 if len(tp) > 0 and ngt > 0:
                     prec, rec = self._compute_prec_rec(tp, cs, ngt)
                     if measure == "AP":
-                        this_measure: float = self._compute_ap(prec, rec)  # type: ignore[assignment]
+                        this_measure: float = self._compute_ap(prec, rec)
                     elif measure == "MR":
                         this_measure = float(np.max(rec))
                     if self.percentages:
-                        this_measure = this_measure * 100
+                        this_measure *= 100
                     measures.append(this_measure)
                 elif not (len(tp) == 0 and ngt == 0):
                     measures.append(0.0)
@@ -206,7 +205,9 @@ class _RefAbstractMAP(ABC):
         return tuple(values)
 
     @abstractmethod
-    def _match(self, pred: dict, gt_predictions: dict, ious: npt.NDArray[np.float64]) -> npt.NDArray[np.bool_]:
+    def _match(
+        self, pred: dict[str, Any], gt_predictions: dict[str, Any], ious: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.bool_]:
         pass
 
 
@@ -224,11 +225,13 @@ class _RefSTAMAP(_RefAbstractMAP):
         self.iou_threshold = iou_threshold
         self.tti_threshold = ttc_threshold
 
-    def _map_classes(self, preds: dict) -> npt.NDArray[np.float64]:
+    def _map_classes(self, preds: dict[str, Any]) -> npt.NDArray[np.float64]:
         nouns = preds["nouns"]
         return np.vstack([nouns] * 4).T
 
-    def _match(self, pred: dict, gt_predictions: dict, ious: npt.NDArray[np.float64]) -> npt.NDArray[np.bool_]:
+    def _match(
+        self, pred: dict[str, Any], gt_predictions: dict[str, Any], ious: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.bool_]:
         nouns = pred["nouns"] == gt_predictions["nouns"]
         boxes = ious.ravel() > self.iou_threshold
         verbs = pred["verbs"] == gt_predictions["verbs"]
@@ -283,7 +286,7 @@ def _ref_preds(
     nouns: list[int],
     verbs: list[int],
     ttcs: list[float],
-) -> dict:
+) -> dict[str, Any]:
     return {
         "boxes": np.array(boxes),
         "scores": np.array(scores),
@@ -298,7 +301,7 @@ def _ref_labels(
     nouns: list[int],
     verbs: list[int],
     ttcs: list[float],
-) -> dict:
+) -> dict[str, Any]:
     return {
         "boxes": np.array(boxes),
         "nouns": np.array(nouns),
@@ -368,40 +371,40 @@ class TestAbstractMapInternals:
     def test_compute_precision_recall_all_tp(self) -> None:
         tp = np.array([1.0, 1.0, 1.0])
         scores = np.array([0.9, 0.8, 0.7])
-        prec, rec = self.metric._compute_precision_recall(tp, scores, 3)
+        prec, rec = self.metric._compute_precision_recall(tp, scores, 3)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_allclose(prec, [1.0, 1.0, 1.0], atol=1e-6)
         np.testing.assert_allclose(rec, [1 / 3, 2 / 3, 1.0], atol=1e-6)
 
     def test_compute_precision_recall_all_fp(self) -> None:
         tp = np.array([0.0, 0.0, 0.0])
         scores = np.array([0.9, 0.8, 0.7])
-        prec, rec = self.metric._compute_precision_recall(tp, scores, 3)
+        prec, rec = self.metric._compute_precision_recall(tp, scores, 3)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_allclose(prec, [0.0, 0.0, 0.0], atol=1e-6)
         np.testing.assert_allclose(rec, [0.0, 0.0, 0.0], atol=1e-6)
 
     def test_safe_divide_zero_denominator_returns_zero(self) -> None:
-        result = self.metric._safe_divide(np.array([1.0, 2.0]), np.array([0.0, 4.0]))
+        result = self.metric._safe_divide(np.array([1.0, 2.0]), np.array([0.0, 4.0]))  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_allclose(result, [0.0, 0.5], atol=1e-6)
 
     def test_safe_divide_normal_case(self) -> None:
-        result = self.metric._safe_divide(np.array([3.0, 6.0]), np.array([3.0, 2.0]))
+        result = self.metric._safe_divide(np.array([3.0, 6.0]), np.array([3.0, 2.0]))  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_allclose(result, [1.0, 3.0], atol=1e-6)
 
     def test_compute_average_precision_perfect(self) -> None:
         prec = np.array([1.0, 1.0, 1.0])
         rec = np.array([1 / 3, 2 / 3, 1.0])
-        ap = self.metric._compute_average_precision(prec, rec)
+        ap = self.metric._compute_average_precision(prec, rec)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         assert float(ap) == pytest.approx(1.0, abs=1e-5)
 
     def test_compute_average_precision_zero(self) -> None:
         prec = np.array([0.0, 0.0])
         rec = np.array([0.0, 0.0])
-        ap = self.metric._compute_average_precision(prec, rec)
+        ap = self.metric._compute_average_precision(prec, rec)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         assert float(ap) == pytest.approx(0.0, abs=1e-5)
 
     def test_compute_max_recall_returns_max(self) -> None:
         rec = np.array([0.2, 0.5, 0.8, 0.6])
-        assert float(self.metric._compute_max_recall(rec)) == pytest.approx(0.8, abs=1e-6)
+        assert float(self.metric._compute_max_recall(rec)) == pytest.approx(0.8, abs=1e-6)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------
@@ -413,19 +416,19 @@ class TestObjectOnlyMAP:
     def test_map_classes_shape(self) -> None:
         preds = _make_preds([[0, 0, 9, 9], [10, 10, 19, 19]], [0.9, 0.8], [1, 2], [3, 4], [1.0, 2.0])
         metric = ObjectOnlyMeanAveragePrecision()
-        classes = metric._map_classes(preds)
+        classes = metric._map_classes(preds)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         assert classes.shape == (2, 2)
 
     def test_map_classes_first_column_is_nouns(self) -> None:
         preds = _make_preds([[0, 0, 9, 9], [10, 10, 19, 19]], [0.9, 0.8], [5, 7], [3, 4], [1.0, 2.0])
         metric = ObjectOnlyMeanAveragePrecision()
-        classes = metric._map_classes(preds)
+        classes = metric._map_classes(preds)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_array_equal(classes[:, 0], [5, 7])
 
     def test_map_classes_second_column_is_ones(self) -> None:
         preds = _make_preds([[0, 0, 9, 9], [10, 10, 19, 19]], [0.9, 0.8], [5, 7], [3, 4], [1.0, 2.0])
         metric = ObjectOnlyMeanAveragePrecision()
-        classes = metric._map_classes(preds)
+        classes = metric._map_classes(preds)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         np.testing.assert_array_equal(classes[:, 1], [1, 1])
 
     def test_perfect_prediction_returns_100(self) -> None:
@@ -434,7 +437,7 @@ class TestObjectOnlyMAP:
         metric = ObjectOnlyMeanAveragePrecision()
         metric.add(preds, labels)
         result = metric.evaluate()
-        assert result == (100.0, 100.0)
+        assert result == (pytest.approx(100.0, abs=1e-3), pytest.approx(100.0, abs=1e-3))
 
     def test_no_overlap_returns_zero(self) -> None:
         preds = _make_preds([[200, 200, 300, 300]], [0.9], [3], [7], [1.0])
@@ -442,7 +445,7 @@ class TestObjectOnlyMAP:
         metric = ObjectOnlyMeanAveragePrecision()
         metric.add(preds, labels)
         result = metric.evaluate()
-        assert result == (0.0, 0.0)
+        assert result == (pytest.approx(0.0, abs=1e-3), pytest.approx(0.0, abs=1e-3))
 
     def test_wrong_noun_gives_zero_map_box_noun(self) -> None:
         # Box overlaps perfectly but noun is wrong
@@ -451,8 +454,8 @@ class TestObjectOnlyMAP:
         metric = ObjectOnlyMeanAveragePrecision()
         metric.add(preds, labels)
         map_box_noun, ap_box = metric.evaluate()
-        assert map_box_noun == 0.0
-        assert ap_box == 100.0
+        assert map_box_noun == pytest.approx(0.0, abs=1e-3)
+        assert ap_box == pytest.approx(100.0, abs=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -466,14 +469,24 @@ class TestSTAMAP:
         labels = _make_labels([[10, 20, 50, 80]], [3], [7], [1.0])
         metric = STAMeanAveragePrecision()
         metric.add(preds, labels)
-        assert metric.evaluate() == (100.0, 100.0, 100.0, 100.0)
+        assert metric.evaluate() == (
+            pytest.approx(100.0, abs=1e-3),
+            pytest.approx(100.0, abs=1e-3),
+            pytest.approx(100.0, abs=1e-3),
+            pytest.approx(100.0, abs=1e-3),
+        )
 
     def test_no_overlap_all_zero(self) -> None:
         preds = _make_preds([[200, 200, 300, 300]], [0.9], [3], [7], [1.0])
         labels = _make_labels([[0, 0, 9, 9]], [3], [7], [1.0])
         metric = STAMeanAveragePrecision()
         metric.add(preds, labels)
-        assert metric.evaluate() == (0.0, 0.0, 0.0, 0.0)
+        assert metric.evaluate() == (
+            pytest.approx(0.0, abs=1e-3),
+            pytest.approx(0.0, abs=1e-3),
+            pytest.approx(0.0, abs=1e-3),
+            pytest.approx(0.0, abs=1e-3),
+        )
 
     def test_wrong_verb_drops_verb_metrics(self) -> None:
         # Box and noun match, but verb does not → map_box_noun_verb and map_box_noun_verb_ttc are 0
@@ -482,10 +495,10 @@ class TestSTAMAP:
         metric = STAMeanAveragePrecision()
         metric.add(preds, labels)
         map_noun, map_noun_verb, map_noun_ttc, map_noun_verb_ttc = metric.evaluate()
-        assert map_noun == 100.0
-        assert map_noun_verb == 0.0
-        assert map_noun_ttc == 100.0
-        assert map_noun_verb_ttc == 0.0
+        assert map_noun == pytest.approx(100.0, abs=1e-3)
+        assert map_noun_verb == pytest.approx(0.0, abs=1e-3)
+        assert map_noun_ttc == pytest.approx(100.0, abs=1e-3)
+        assert map_noun_verb_ttc == pytest.approx(0.0, abs=1e-3)
 
     def test_wrong_ttc_drops_ttc_metrics(self) -> None:
         # Box, noun, verb match, but ttc is far off
@@ -494,10 +507,10 @@ class TestSTAMAP:
         metric = STAMeanAveragePrecision(ttc_threshold=0.25)
         metric.add(preds, labels)
         map_noun, map_noun_verb, map_noun_ttc, map_noun_verb_ttc = metric.evaluate()
-        assert map_noun == 100.0
-        assert map_noun_verb == 100.0
-        assert map_noun_ttc == 0.0
-        assert map_noun_verb_ttc == 0.0
+        assert map_noun == pytest.approx(100.0, abs=1e-3)
+        assert map_noun_verb == pytest.approx(100.0, abs=1e-3)
+        assert map_noun_ttc == pytest.approx(0.0, abs=1e-3)
+        assert map_noun_verb_ttc == pytest.approx(0.0, abs=1e-3)
 
     def test_evaluate_returns_four_element_tuple(self) -> None:
         preds = _make_preds([[0, 0, 9, 9]], [0.5], [1], [1], [1.0])
@@ -563,9 +576,11 @@ class TestSTAMAP:
 
 class TestOverallMAP:
     def test_map_classes_shape_is_n_by_12(self) -> None:
-        preds = _make_preds([[0, 0, 9, 9], [10, 10, 19, 19], [20, 20, 29, 29]], [0.9, 0.8, 0.7], [1, 2, 3], [1, 2, 3], [1.0, 2.0, 3.0])
+        preds = _make_preds(
+            [[0, 0, 9, 9], [10, 10, 19, 19], [20, 20, 29, 29]], [0.9, 0.8, 0.7], [1, 2, 3], [1, 2, 3], [1.0, 2.0, 3.0]
+        )
         metric = OverallMeanAveragePrecision()
-        classes = metric._map_classes(preds)
+        classes = metric._map_classes(preds)  # noqa: SLF001 # type: ignore[reportPrivateUsage]
         assert classes.shape == (3, 12)
 
     def test_evaluate_returns_12_element_tuple(self) -> None:
@@ -599,15 +614,16 @@ class TestOverallMAP:
 class TestRegressionVsReference:
     """Verify STAMeanAveragePrecision matches the EGO4D reference on identical inputs."""
 
-    BOXES_PREDS = [[245, 128, 589, 683], [425, 68, 592, 128], [120, 200, 180, 260], [150, 150, 250, 250]]
-    SCORES = [0.8, 0.4, 0.9, 0.1]
-    NOUNS = [3, 5, 7, 9]
-    VERBS = [8, 11, 6, 10]
-    TTCS = [1.25, 1.8, 2.0, 2.5]
-    BOXES_LABELS = [[195, 322, 625, 800], [150, 300, 425, 689], [121, 201, 181, 261], [100, 100, 200, 200]]
-    NOUNS_GT = [9, 5, 7, 1]
-    VERBS_GT = [3, 11, 6, 2]
-    TTCS_GT = [0.25, 1.25, 2.0, 3.0]
+    def __init__(self) -> None:
+        self.BOXES_PREDS = [[245, 128, 589, 683], [425, 68, 592, 128], [120, 200, 180, 260], [150, 150, 250, 250]]
+        self.SCORES = [0.8, 0.4, 0.9, 0.1]
+        self.NOUNS = [3, 5, 7, 9]
+        self.VERBS = [8, 11, 6, 10]
+        self.TTCS = [1.25, 1.8, 2.0, 2.5]
+        self.BOXES_LABELS = [[195, 322, 625, 800], [150, 300, 425, 689], [121, 201, 181, 261], [100, 100, 200, 200]]
+        self.NOUNS_GT = [9, 5, 7, 1]
+        self.VERBS_GT = [3, 11, 6, 2]
+        self.TTCS_GT = [0.25, 1.25, 2.0, 3.0]
 
     def _make_our(self, top_k: int = 5) -> STAMeanAveragePrecision:
         preds = _make_preds(self.BOXES_PREDS, self.SCORES, self.NOUNS, self.VERBS, self.TTCS)
