@@ -6,10 +6,6 @@ from typing import NamedTuple, TypedDict
 import numpy as np
 import numpy.typing as npt
 
-# ===================================================
-# TODO: 読み込んだ後全部numpyに変換するようにする
-# ===================================================
-
 
 class BoundingBox(NamedTuple):
     """A bounding box represented by its coordinates."""
