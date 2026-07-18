@@ -59,7 +59,7 @@ def compute_iou(
     preds: list[list[int]] | npt.NDArray[np.int32] | npt.NDArray[np.int64],
     gts: list[list[int]] | npt.NDArray[np.int32] | npt.NDArray[np.int64],
     eps: float = 1e-11,
-) -> npt.NDArray[np.float32]:
+) -> npt.NDArray[np.float64]:
     """Compute a matrix of intersection over union (IoU) values for two lists of bounding boxes using broadcasting.
 
     Formula for IoU:
@@ -107,7 +107,7 @@ def compute_iou(
 
     iou = areas_intersection / (areas_preds + areas_gts - areas_intersection + eps)
 
-    return iou.astype(np.float32)
+    return iou
 
 
 class AbstractMeanAveragePrecision(ABC):
@@ -133,10 +133,10 @@ class AbstractMeanAveragePrecision(ABC):
             count_all_classes: Whether to count all classes when computing the mAP.
             top_k: The K to be considered in the top-k criterion. If None, a standard mAP will be computed.
         """
-        self.true_positives: list[npt.NDArray[np.float32]] = []
-        self.confidence_scores: list[npt.NDArray[np.float32]] = []
-        self.predicted_classes: list[npt.NDArray[np.uint16]] = []
-        self.gt_classes: list[npt.NDArray[np.uint16]] = []
+        self.true_positives: list[npt.NDArray[np.float64]] = []
+        self.confidence_scores: list[npt.NDArray[np.float64]] = []
+        self.predicted_classes: list[npt.NDArray[np.float64]] = []
+        self.gt_classes: list[npt.NDArray[np.float64]] = []
 
         self.num_aps = num_aps
         self.percentage = percentage
@@ -151,7 +151,7 @@ class AbstractMeanAveragePrecision(ABC):
     def get_short_names(self) -> list[str]:
         return self.short_names
 
-    def add(self, preds: PredictionsFormat, labels: LabelsFormat) -> npt.NDArray[np.float32]:
+    def add(self, preds: PredictionsFormat, labels: LabelsFormat) -> npt.NDArray[np.float64]:
         """Add predictions and labels of a single image and matches predictions to ground truth boxes.
 
         Args:
@@ -163,15 +163,15 @@ class AbstractMeanAveragePrecision(ABC):
         Returns:
             A list of pairs of predicted/matched ground truth boxes.
         """
-        matched: list = []
+        matched: list[npt.NDArray[np.float64]] = []
 
         if len(preds) > 0:
             predicted_boxes = np.array(preds["boxes"], dtype=np.int32)
-            predicted_scores = np.array(preds["scores"], dtype=np.float32)
+            predicted_scores = np.array(preds["scores"], dtype=np.float64)
             predicted_classes = self._map_classes(preds)
 
             # Keep track of correctly matched boxes for the different AP matrics.
-            true_positives = np.zeros((len(predicted_boxes), self.num_aps), dtype=np.float32)
+            true_positives = np.zeros((len(predicted_boxes), self.num_aps), dtype=np.float64)
 
             if len(labels) > 0:
                 gt_boxes = np.array(labels["boxes"], dtype=np.int32)
@@ -179,7 +179,7 @@ class AbstractMeanAveragePrecision(ABC):
                 ious = compute_iou(predicted_boxes, gt_boxes)
 
                 # Keep track of GT boxes which have already been matched to a predicted box.
-                gt_matched = np.zeros((len(gt_boxes), self.num_aps))
+                gt_matched = np.zeros((len(gt_boxes), self.num_aps), dtype=np.float64)
 
                 # From highest to lowest score
                 for i in predicted_scores.argsort()[::-1]:
@@ -220,7 +220,7 @@ class AbstractMeanAveragePrecision(ABC):
                     # Set the GT asa matched if we obtained a matching.
                     gt_matched[jj, range(len(jj))] += i_matchings
 
-                    matched.append(jj_matched)
+                    matched.append(jj_matched.astype(np.float64))
 
                 # Remove the K highest score false positives if top_k is set.
                 if self.top_k is not None and self.top_k > 1:
@@ -249,9 +249,9 @@ class AbstractMeanAveragePrecision(ABC):
         if len(matched) > 0:
             return np.vstack(matched)
         else:
-            return np.zeros((0, self.num_aps), dtype=np.float32)
+            return np.zeros((0, self.num_aps), dtype=np.float64)
 
-    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.uint16]:
+    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.float64]:
         """Maps the class labels to a numpy array. This is useful for computing the mAP metric.
 
         Args:
@@ -260,14 +260,14 @@ class AbstractMeanAveragePrecision(ABC):
         Returns:
             The mapped class labels as a numpy array.
         """
-        return np.vstack([preds_labels["nouns"]] * self.num_aps).astype(np.uint16).T
+        return np.vstack([preds_labels["nouns"]] * self.num_aps).astype(np.float64).T
 
     def _compute_precision_recall(
         self,
-        true_positives: npt.NDArray[np.float32],
-        confidence_scores: npt.NDArray[np.float32],
-        num_gt: npt.NDArray[np.int32],
-    ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+        true_positives: npt.NDArray[np.float64],
+        confidence_scores: npt.NDArray[np.float64],
+        num_gt: int,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         """Compute precision and recall values.
 
         Args:
@@ -279,10 +279,10 @@ class AbstractMeanAveragePrecision(ABC):
             Precision and recall values as numpy arrays.
         """
         # Sort true positives by confidence scores.
-        sorted_tp = true_positives[confidence_scores.argsort()[::-1]]
+        sorted_tp = true_positives[confidence_scores.argsort()[::-1]].astype(np.float64)
 
         tp = sorted_tp.cumsum()
-        fp = (1 - sorted_tp).cumsum()
+        fp = (1.0 - sorted_tp).cumsum()
 
         precision = self._safe_divide(tp, tp + fp)
         recall = self._safe_divide(tp, num_gt)
@@ -290,8 +290,8 @@ class AbstractMeanAveragePrecision(ABC):
 
     @staticmethod
     def _safe_divide(
-        numerator: npt.NDArray[np.float32], denominator: npt.NDArray[np.int32] | npt.NDArray[np.float32]
-    ) -> npt.NDArray[np.float32]:
+        numerator: npt.NDArray[np.float64], denominator: int | npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
         """Safely divide to avoid division by zero.
 
         Args:
@@ -301,11 +301,9 @@ class AbstractMeanAveragePrecision(ABC):
         Returns:
             The result of the division, with zeros where the denominator is zero.
         """
-        return np.divide(numerator, denominator, out=np.zeros_like(numerator, dtype=np.float32), where=denominator != 0)
+        return np.divide(numerator, denominator, out=np.zeros_like(numerator, dtype=np.float64), where=denominator != 0)
 
-    def _compute_average_precision(
-        self, precision: npt.NDArray[np.float32], recall: npt.NDArray[np.float32]
-    ) -> npt.NDArray[np.float32]:
+    def _compute_average_precision(self, precision: npt.NDArray[np.float64], recall: npt.NDArray[np.float64]) -> float:
         """Compute average precision (AP) from precision and recall values.
 
         Python implementation of Matlab's VOC AP computation.
@@ -315,7 +313,7 @@ class AbstractMeanAveragePrecision(ABC):
             recall: A numpy array of recall values.
 
         Returns:
-            A numpy array of average precision values.
+            The average precision value as a float.
         """
         # Append sentinel values at the end
         mrec = np.concatenate(([0.0], recall, [1.0]))
@@ -333,7 +331,7 @@ class AbstractMeanAveragePrecision(ABC):
         return ap
 
     @staticmethod
-    def _compute_max_recall(recall: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    def _compute_max_recall(recall: npt.NDArray[np.float64]) -> float:
         """Compute the maximum recall value.
 
         Args:
@@ -343,7 +341,7 @@ class AbstractMeanAveragePrecision(ABC):
             The maximum recall value.
         """
         max_recall = np.max(recall)
-        return np.array(max_recall, dtype=np.float32)
+        return float(max_recall)
 
     def evaluate(self, measure: str = "AP") -> tuple[float, ...]:
         """Evaluate the average precision (AP) or maximum recall (MR) based on the added predictions and labels.
@@ -383,7 +381,7 @@ class AbstractMeanAveragePrecision(ABC):
                 # Get the true positives and number of ground truth labels.
                 true_positive = true_positives_i[predicted_classes_i == cla]
                 confidence_score = confidence_scores[predicted_classes_i == cla]
-                num_gt = np.sum(gt_classes_i == cla)
+                num_gt = int(np.sum(gt_classes_i == cla))  # type: ignore[reportUnknownArgumentType]
 
                 # Check if the list of true positives is non-empty.
                 if len(true_positive) > 0:
@@ -391,6 +389,8 @@ class AbstractMeanAveragePrecision(ABC):
                     valid = ~np.isnan(true_positive)
                     true_positive = true_positive[valid]
                     confidence_score = confidence_score[valid]
+
+                this_measure: float = 0.0
                 # If both true positives and number of ground truth are non empty, compute the metric.
                 if len(true_positive) > 0 and num_gt > 0:
                     precision, recall = self._compute_precision_recall(true_positive, confidence_score, num_gt)
@@ -420,7 +420,7 @@ class AbstractMeanAveragePrecision(ABC):
 
     @abstractmethod
     def _match(
-        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float32]
+        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.bool_]:
         """Abstract method to return matrix of number of match predictions to ground truth boxes."""
 
@@ -446,7 +446,7 @@ class ObjectOnlyMeanAveragePrecision(AbstractMeanAveragePrecision):
         self.names = ["Box + Noun mAP", "Box AP"]
         self.short_names = ["map_box_noun", "ap_box"]
 
-    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.uint16]:
+    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.float64]:
         """Associates the prediction to a class.
 
         Args:
@@ -455,8 +455,8 @@ class ObjectOnlyMeanAveragePrecision(AbstractMeanAveragePrecision):
         Returns:
             An array of class indices corresponding to the predictions.
         """
-        nouns = preds_labels["nouns"]
-        boxes = np.ones(len(nouns), dtype=np.uint16)
+        nouns = np.array(preds_labels["nouns"], dtype=np.float64)
+        boxes = np.ones(len(nouns), dtype=np.float64)
 
         return np.vstack(
             [
@@ -466,7 +466,7 @@ class ObjectOnlyMeanAveragePrecision(AbstractMeanAveragePrecision):
         ).T
 
     def _match(
-        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float32]
+        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.bool_]:
         """Return matches of a given prediction to set of ground truth predictions.
 
@@ -545,7 +545,7 @@ class OverallMeanAveragePrecision(AbstractMeanAveragePrecision):
             "map_box_noun_verb_ttc",
         ]
 
-    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.uint16]:
+    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.float64]:
         """Associates each prediction to a class.
 
         Args:
@@ -554,8 +554,8 @@ class OverallMeanAveragePrecision(AbstractMeanAveragePrecision):
         Returns:
             An array of class indices associated with each prediction.
         """
-        nouns = preds_labels["nouns"]
-        ones = np.ones(len(nouns), dtype=np.uint16)
+        nouns = np.array(preds_labels["nouns"], dtype=np.float64)
+        ones = np.ones(len(nouns), dtype=np.float64)
 
         return np.vstack(
             [
@@ -575,7 +575,7 @@ class OverallMeanAveragePrecision(AbstractMeanAveragePrecision):
         ).T
 
     def _match(
-        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float32]
+        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.bool_]:
         """Return matches of a given prediction to set of ground truth predictions.
 
@@ -591,7 +591,7 @@ class OverallMeanAveragePrecision(AbstractMeanAveragePrecision):
         boxes = ious.ravel() > self.iou_threshold
         verbs = pred["verb"] == gt_predictions["verbs"]
         ttcs = (
-            np.abs(np.array(pred["ttc"], dtype=np.float32) - np.array(gt_predictions["ttcs"], dtype=np.float32))
+            np.abs(np.array(pred["ttc"], dtype=np.float64) - np.array(gt_predictions["ttcs"], dtype=np.float64))
             <= self.ttc_threshold
         )
 
@@ -658,7 +658,7 @@ class STAMeanAveragePrecision(AbstractMeanAveragePrecision):
             "map_box_noun_verb_ttc",
         ]
 
-    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.uint16]:
+    def _map_classes(self, preds_labels: PredictionsFormat | LabelsFormat) -> npt.NDArray[np.float64]:
         """Associates each prediction to a class.
 
         Args:
@@ -667,7 +667,7 @@ class STAMeanAveragePrecision(AbstractMeanAveragePrecision):
         Returns:
             An array of class indices associated with each prediction.
         """
-        nouns = preds_labels["nouns"]
+        nouns = np.array(preds_labels["nouns"], dtype=np.float64)
         return np.vstack(
             [
                 nouns,  # map_box_noun - average over nouns
@@ -678,7 +678,7 @@ class STAMeanAveragePrecision(AbstractMeanAveragePrecision):
         ).T
 
     def _match(
-        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float32]
+        self, pred: Prediction, gt_predictions: LabelsFormat, ious: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.bool_]:
         """Return matches of a given prediction to set of ground truth predictions.
 
@@ -693,7 +693,10 @@ class STAMeanAveragePrecision(AbstractMeanAveragePrecision):
         nouns = pred["noun"] == gt_predictions["nouns"]
         boxes = ious.ravel() > self.iou_threshold
         verbs = pred["verb"] == gt_predictions["verbs"]
-        ttcs = np.abs(np.array(pred["ttc"]) - np.array(gt_predictions["ttcs"])) <= self.ttc_threshold
+        ttcs = (
+            np.abs(np.array(pred["ttc"], dtype=np.float64) - np.array(gt_predictions["ttcs"], dtype=np.float64))
+            <= self.ttc_threshold
+        )
 
         tp_box_noun = boxes & nouns
         tp_box_noun_verb = boxes & nouns & verbs
