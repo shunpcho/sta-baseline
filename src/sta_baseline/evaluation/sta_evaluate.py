@@ -108,18 +108,13 @@ class AbstractMeanAveragePrecision(ABC):
         count_all_classes: bool = True,
         top_k: int | None = None,
     ) -> None:
-        """Contruct the mAP metric.
+        """Construct the mAP metric.
 
         Args:
-            num_aps: Number of average precision metrics to compute. E.g., we can compute different APs for
-                    different IoU thresholds.
-            percentage: Whether to count all classes when computing the mAP. If false, classes which do not have
-                        any ground truth label but do have associated predictions are counted (they will have an
-                        AP equal to 0), otherwise, only classes for which there is at least one ground truth label
-                        will be counted. It is useful to set this to True for imbalanced datasets for which not all
-                        classes are in the ground truth labels.
-            count_all_classes: Whether to count all classes when computing the mAP.
-            top_k: The K to be considered in the top-k criterion. If None, a standard mAP will be computed.
+            num_aps: Number of AP variants computed per prediction (e.g., multiple thresholds or matching criteria).
+            percentage: If True, return metrics in [0, 100] instead of [0, 1].
+            count_all_classes: If True, average over classes present in GT or predictions; if False, average only over GT classes.
+            top_k: If set (>1), apply the top-k false-positive suppression criterion from the EGO4D reference.
         """
         self.true_positives: list[npt.NDArray[np.float64]] = []
         self.confidence_scores: list[npt.NDArray[np.float64]] = []
