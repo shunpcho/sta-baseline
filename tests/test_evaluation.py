@@ -614,7 +614,7 @@ class TestOverallMAP:
 class TestRegressionVsReference:
     """Verify STAMeanAveragePrecision matches the EGO4D reference on identical inputs."""
 
-    def __init__(self) -> None:
+    def setup_method(self) -> None:
         self.BOXES_PREDS = [[245, 128, 589, 683], [425, 68, 592, 128], [120, 200, 180, 260], [150, 150, 250, 250]]
         self.SCORES = [0.8, 0.4, 0.9, 0.1]
         self.NOUNS = [3, 5, 7, 9]
@@ -624,7 +624,6 @@ class TestRegressionVsReference:
         self.NOUNS_GT = [9, 5, 7, 1]
         self.VERBS_GT = [3, 11, 6, 2]
         self.TTCS_GT = [0.25, 1.25, 2.0, 3.0]
-
     def _make_our(self, top_k: int = 5) -> STAMeanAveragePrecision:
         preds = _make_preds(self.BOXES_PREDS, self.SCORES, self.NOUNS, self.VERBS, self.TTCS)
         labels = _make_labels(self.BOXES_LABELS, self.NOUNS_GT, self.VERBS_GT, self.TTCS_GT)
