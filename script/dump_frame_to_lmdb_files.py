@@ -63,6 +63,8 @@ def main() -> None:
         path_to_videos=args.path_to_videos,
         existing_keys=lmdb_store.get_existing_keys(),
         frame_height=args.frame_height,
+        context_frames=args.context_frames,
+        fname_format=args.fname_format,
     )
     dataloader = DataLoader(dest, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=args.num_workers)
 
@@ -109,6 +111,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         fps: int = 30,
         max_chunk_size: int = 32,
         frame_height: int = 320,
+        fname_format: str = "{video_id:s}_{frame_number:07d}",
         retry: int = 10,
     ) -> None:
         """Initialize the dataset with annotations, video paths, and existing keys.
@@ -122,6 +125,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             fps: Frames per second of the videos.
             max_chunk_size: Maximum number of frames to process in a single chunk.
             frame_height: Height of the video frames.
+            fname_format: Format string for generating frame keys.
             retry: Number of times to retry loading a video in case of failure.
         """
         print(f"Sampling from {len(annotations)} annotations with a temporal context of {context_frames / fps} seconds")
@@ -134,6 +138,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.path_to_videos = path_to_videos
         self.retry = retry
         self.frame_height = frame_height
+        self.fname_format = fname_format
         if video_uid is not None:
             annotations = [a for a in annotations if a["video_uid"] in video_uid]
 
@@ -201,7 +206,11 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             )
 
         result_ims = [collected[int(fn)] for fn in frame_numbers if int(fn) in collected]
-        result_keys = [f"{video_id}_{fn}" for fn in frame_numbers if int(fn) in collected]
+        result_keys = [
+            self.fname_format.format(video_id=video_id, frame_number=int(fn))
+            for fn in frame_numbers
+            if int(fn) in collected
+        ]
         return {"ims": result_ims, "keys": result_keys}
 
 
