@@ -14,11 +14,10 @@ from itertools import chain
 from pathlib import Path
 from typing import TypedDict
 
-import lmdb
 import numpy as np
 import numpy.typing as npt
-import tqdm
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, PyAVVideoReader
 
@@ -38,6 +37,7 @@ def main() -> None:
         "--fname_format", type=str, default="{video_id:s}_{frame_number:07d}", help="Format for the frame filenames."
     )
     parser.add_argument("--frame_height", type=int, default=320, help="Height of the video frames.")
+    parser.add_argument("--num_workers", type=int, default=8, help="Number of worker processes for the DataLoader.")
     parser.add_argument("--video_uid", type=str, nargs="+", default=None, help="Unique identifier(s) for the video(s).")
 
     args = parser.parse_args()
@@ -54,24 +54,27 @@ def main() -> None:
     for split in [train, val, test]:
         annotations += split["annotations"]
 
-    lmdb = Ego4DHLMDB(args.path_to_output_lmdbs)
+    lmdb_store = Ego4DHLMDB(args.path_to_output_lmdbs, frame_template=args.fname_format)
 
     # Define the dataset and dataloader
     dest = PyAVSTADataset(
         video_uid=args.video_uid,
         annotations=annotations,
         path_to_videos=args.path_to_videos,
-        existing_keys=lmdb.get_existing_keys(),
+        existing_keys=lmdb_store.get_existing_keys(),
+        frame_height=args.frame_height,
     )
-    dataloader = DataLoader(dest, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=8)
+    dataloader = DataLoader(dest, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=args.num_workers)
 
     # Iterate over the dataloader
-    for frames, keys in tqdm(dataloader):
-        for parent in np.unique([k.split("_")[0] for k in keys]):
-            idx = np.where([k.startswith(parent) for k in keys])[0]
-            these_keys = [int(keys[i].split("_")[1]) for i in idx]
+    for batch in tqdm(dataloader):
+        frames = batch["ims"]
+        keys = batch["keys"]
+        for parent in np.unique([k.rsplit("_", 1)[0] for k in keys]):
+            idx = np.where([k.startswith(parent + "_") for k in keys])[0]
+            these_keys = [int(keys[i].rsplit("_", 1)[1]) for i in idx]
             these_frames = [frames[i] for i in idx]
-            lmdb.put_batch(parent, these_keys, these_frames)
+            lmdb_store.put_batch(parent, these_keys, these_frames)
 
 
 class Annotation(TypedDict):
@@ -101,7 +104,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         video_uid: list[str] | None,
         annotations: list[Annotation],
         path_to_videos: Path,
-        existing_keys: list[lmdb.Cursor],
+        existing_keys: list[bytes],
         context_frames: int = 32,
         fps: int = 30,
         max_chunk_size: int = 32,
@@ -125,7 +128,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         existing_frames: dict[str, list[int]] = defaultdict(list)
         for key in existing_keys:
             key_str = str(key.decode("utf-8"))
-            video_id, frame_number = key_str.split("_")
+            video_id, frame_number = key_str.rsplit("_", 1)
             existing_frames[video_id].append(int(frame_number))
 
         self.path_to_videos = path_to_videos
@@ -178,22 +181,28 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
     def __getitem__(self, idx: int) -> LMDBChunk:
         video_id, frame_numbers = self.chunks[idx]
 
-        frames: FrameChunk = {"frame_numbers": [], "imgs": []}
+        collected: dict[int, npt.NDArray[np.uint8]] = {}
 
         for _ in range(self.retry):
-            frame_numbers = np.setdiff1d(frame_numbers, list(frames.keys()))
-            vr = PyAVVideoReader(str(self.path_to_videos / (video_id + ".mp4")), height=self.frame_height)
-            ims = vr[frame_numbers]
+            missing = np.setdiff1d(frame_numbers, list(collected.keys()))
+            if len(missing) == 0:
+                break
+            vr = PyAVVideoReader(self.path_to_videos / (video_id + ".mp4"), height=self.frame_height)
+            ims = vr[missing]
+            for frame_num, im in zip(missing, ims, strict=True):
+                if im is not None:
+                    collected[int(frame_num)] = im
 
-            missing_frames = np.setdiff1d(frame_numbers, list(frames.keys()))
+        missing_frames = np.setdiff1d(frame_numbers, list(collected.keys()))
+        if len(missing_frames) > 0:
+            print(
+                f"WARNING: could not read the following frames from {video_id}:",
+                ", ".join([str(x) for x in missing_frames]),
+            )
 
-            if len(missing_frames) > 0:
-                print(
-                    f"WARNING: could not read the following frames from {video_id}:",
-                    ", ".join([str(x) for x in missing_frames]),
-                )
-
-        return LMDBChunk(ims=ims, keys=keys)
+        result_ims = [collected[int(fn)] for fn in frame_numbers if int(fn) in collected]
+        result_keys = [f"{video_id}_{fn}" for fn in frame_numbers if int(fn) in collected]
+        return {"ims": result_ims, "keys": result_keys}
 
 
 def collate_fn(batch: list[LMDBChunk]) -> LMDBChunk:
