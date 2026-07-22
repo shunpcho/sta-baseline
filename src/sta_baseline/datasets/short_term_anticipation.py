@@ -1,5 +1,4 @@
 import io
-from collections.abc import Iterable
 from fractions import Fraction
 from pathlib import Path
 from typing import TypeAlias
@@ -19,22 +18,43 @@ def _get_frames(
     container: av.container.Container,
     include_audio: bool = False,
     audio_buffer_frames: int = 0,
-) -> Iterable[av.frame.Frame]:
+) -> list[av.frame.Frame | None]:
     if len(container.streams.video) == 0:
         raise ValueError(f"No video streams found in {container.name}")
     if len(container.streams.video) > 1:
         raise ValueError(f"Multiple video streams not supported in {container.name}")
 
     video_stream = container.streams.video[0]
-    video_start = video_stream.start_time
+    video_start = video_stream.start_time or 0
     video_base = video_stream.time_base
     fps = video_stream.average_rate
     video_pt_diff = pts_difference_pre_frame(fps, video_base)
 
     audio_buffer_pts = frame_index_to_pts(audio_buffer_frames, 0, video_pt_diff) if include_audio else 0
 
+    pts_to_idx: dict[int, int] = {
+        frame_index_to_pts(frame_idx, video_start, video_pt_diff): list_idx
+        for list_idx, frame_idx in enumerate(frame_list)
+    }
 
-def pts_difference_pre_frame(fps: Fraction, time_base: Fraction) -> int: ...
+    first_pts = frame_index_to_pts(min(frame_list), video_start, video_pt_diff)
+    container.seek(first_pts - audio_buffer_pts, stream=video_stream)
+
+    result: list[av.frame.Frame | None] = [None] * len(frame_list)
+    remaining = set(pts_to_idx.keys())
+
+    for frame in container.decode(video=0):
+        if frame.pts in pts_to_idx:
+            result[pts_to_idx[frame.pts]] = frame
+            remaining.discard(frame.pts)
+        if not remaining:
+            break
+
+    return result
+
+
+def pts_difference_pre_frame(fps: Fraction, time_base: Fraction) -> int:
+    return round(1 / fps / time_base)
 
 
 def frame_index_to_pts(frame: int, start_pts: int, diff_per_frame: int) -> int:
@@ -45,7 +65,11 @@ class PyAVVideoReader:
     """To read frames from a video file using PyAV."""
 
     def __init__(
-        self, path_to_video: Path, include_audio: bool = False, audio_buffer_frames: int = 0, height: int | None = None
+        self,
+        path_to_video: str | Path,
+        include_audio: bool = False,
+        audio_buffer_frames: int = 0,
+        height: int | None = None,
     ) -> None:
         """Initialize the PyAVVideoReader.
 
@@ -171,13 +195,13 @@ class Ego4DHLMDB:
                 out.append(imdecode(file_bytes, IMREAD_COLOR) if file_bytes is not None else None)
         return out
 
-    def get_existing_keys(self) -> list[lmdb.Cursor]:
+    def get_existing_keys(self) -> list[bytes]:
         """Get a list of existing keys in the LMDB.
 
         Returns:
-            List of existing keys as strings.
+            List of existing keys as bytes.
         """
-        existing_keys: list[lmdb.Cursor] = []
+        existing_keys: list[bytes] = []
         for parent in self.path_to_root.iterdir():
             if parent.is_dir():
                 with self._get_parent(parent.name) as env, env.begin(write=False) as txn:
