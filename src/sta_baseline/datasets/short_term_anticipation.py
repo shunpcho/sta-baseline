@@ -173,7 +173,7 @@ class Ego4DHLMDB:
             data = txn.get(self.frame_template.format(video_id=video_id, frame_number=frame).encode())
 
             file_bytes = np.asarray(bytearray(io.BytesIO(data).read()), dtype=np.uint8) if data is not None else None
-            return imdecode(file_bytes, IMREAD_COLOR)
+            return imdecode(file_bytes, IMREAD_COLOR) if file_bytes is not None else None
 
     def get_batch(self, video_id: str, frames: list[int]) -> list[npt.NDArray[np.uint8] | None]:
         """Get a batch of frames from the LMDB for the specified video ID and frame numbers.
