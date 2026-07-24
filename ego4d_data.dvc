@@ -1,0 +1,6 @@
+outs:
+- md5: 7e1787491a316da825b22b565306cdc5.dir
+  size: 155443412807
+  nfiles: 3489
+  hash: md5
+  path: ego4d_data
