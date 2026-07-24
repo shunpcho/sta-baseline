@@ -1,0 +1,6 @@
+[core]
+    remote = nas
+['remote "nas"']
+    url = ssh://fileserver@192.168.1.10:/home/fileserver/dvc-storage/ego4d
+    keyfile = /home/s.chochi/.ssh/id_ed25519
+    ask_password = false
