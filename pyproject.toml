@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "av>=18.0.0",
     "dvc>=3.67.1",
+    "dvc-ssh>=4.3.0",
     "ego4d>=1.7.3",
     "imutils>=0.5.4",
     "lmdb>=2.3.0",
