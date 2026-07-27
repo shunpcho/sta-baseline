@@ -82,6 +82,8 @@ def main() -> None:
 class Annotation(TypedDict):
     video_uid: str
     frame: int
+    clip_uid: str
+    clip_frame: int
 
 
 class FrameData(TypedDict):
@@ -140,12 +142,12 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.frame_height = frame_height
         self.fname_format = fname_format
         if video_uid is not None:
-            annotations = [a for a in annotations if a["video_uid"] in video_uid]
+            annotations = [a for a in annotations if a["clip_uid"] in video_uid]
 
         frames_per_video: dict[str, list[int]] = defaultdict(list)
         for annotation in annotations:
-            video_id = annotation["video_uid"]
-            last_frame = annotation["frame"]
+            video_id = annotation["clip_uid"]
+            last_frame = annotation["clip_frame"]
             first_frame = np.max([0, last_frame - context_frames + 1])
             frame_numbers = np.arange(first_frame, last_frame + 1)
             frames_per_video[video_id].extend(frame_numbers)
