@@ -2364,9 +2364,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
-    { name = "dvc" },
-    { name = "dvc-ssh" },
-    { name = "ego4d" },
     { name = "imutils" },
     { name = "lmdb" },
     { name = "opencv-python" },
@@ -2377,6 +2374,9 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "dvc" },
+    { name = "dvc-ssh" },
+    { name = "ego4d" },
     { name = "ipython" },
     { name = "pyright" },
     { name = "ruff" },
@@ -2396,9 +2396,6 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "av", specifier = ">=18.0.0" },
-    { name = "dvc", specifier = ">=3.67.1" },
-    { name = "dvc-ssh", specifier = ">=4.3.0" },
-    { name = "ego4d", specifier = ">=1.7.3" },
     { name = "imutils", specifier = ">=0.5.4" },
     { name = "lmdb", specifier = ">=2.3.0" },
     { name = "opencv-python", specifier = ">=5.0.0.93" },
@@ -2409,6 +2406,9 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "dvc", specifier = ">=3.67.1" },
+    { name = "dvc-ssh", specifier = ">=4.3.0" },
+    { name = "ego4d", specifier = ">=1.7.3" },
     { name = "ipython", specifier = ">=9.5.0" },
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "ruff", specifier = ">=0.13.1" },
