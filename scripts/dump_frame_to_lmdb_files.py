@@ -38,9 +38,19 @@ def main() -> None:
     )
     parser.add_argument("--frame_height", type=int, default=320, help="Height of the video frames.")
     parser.add_argument("--num_workers", type=int, default=8, help="Number of worker processes for the DataLoader.")
-    parser.add_argument("--video_uid", type=str, nargs="+", default=None, help="Unique identifier(s) for the video(s).")
+    parser.add_argument(
+        "--clip_uid",
+        type=Path,
+        default=None,
+        help='Path to a JSON file containing clip UIDs, e.g. {"clip_uid": ["aaa", "bbb", ...]}.',
+    )
 
     args = parser.parse_args()
+
+    clip_uid: list[str] | None = None
+    if args.clip_uid is not None:
+        with args.clip_uid.open(encoding="utf-8") as f:
+            clip_uid = json.load(f)["clip_uid"]
 
     with Path(args.path_to_annotations / "fho_sta_train.json").open(encoding="utf-8") as f:
         train = json.load(f)
@@ -58,7 +68,7 @@ def main() -> None:
 
     # Define the dataset and dataloader
     dest = PyAVSTADataset(
-        video_uid=args.video_uid,
+        clip_uid=clip_uid,
         annotations=annotations,
         path_to_videos=args.path_to_videos,
         existing_keys=lmdb_store.get_existing_keys(),
@@ -80,6 +90,7 @@ def main() -> None:
 
 
 class Annotation(TypedDict):
+    clip_uid: str
     video_uid: str
     frame: int
 
@@ -103,7 +114,7 @@ class LMDBChunk(TypedDict):
 class PyAVSTADataset(Dataset[LMDBChunk]):
     def __init__(
         self,
-        video_uid: list[str] | None,
+        clip_uid: list[str] | None,
         annotations: list[Annotation],
         path_to_videos: Path,
         existing_keys: list[bytes],
@@ -117,7 +128,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         """Initialize the dataset with annotations, video paths, and existing keys.
 
         Args:
-            video_uid: List of unique video identifiers to filter the annotations.
+            clip_uid: List of unique clip identifiers to filter the annotations.
             annotations: List of annotations for the dataset.
             path_to_videos: Path to the directory containing the video files.
             existing_keys: List of existing keys in the LMDBs to avoid duplicates.
@@ -139,8 +150,8 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.retry = retry
         self.frame_height = frame_height
         self.fname_format = fname_format
-        if video_uid is not None:
-            annotations = [a for a in annotations if a["video_uid"] in video_uid]
+        if clip_uid is not None:
+            annotations = [a for a in annotations if a["clip_uid"] in clip_uid]
 
         frames_per_video: dict[str, list[int]] = defaultdict(list)
         for annotation in annotations:
