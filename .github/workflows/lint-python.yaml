@@ -1,0 +1,53 @@
+name: Lint Python
+
+on: [pull_request]
+jobs:
+  ruff-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-files: |
+            pyproject.toml
+            uv.lock
+          uv-version: "0.8.3"
+
+      - name: Setup Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group lint
+
+      - name: Run ruff format (check)
+        run: uv run ruff format --check .
+
+      - name: Run ruff
+        run: uv run ruff check .
+  typing-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-files: |
+            pyproject.toml
+            uv.lock
+          uv-version: "0.8.3"
+
+      - name: Setup Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run pyright
+        run: uv run pyright src tests
