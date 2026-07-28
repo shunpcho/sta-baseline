@@ -188,32 +188,32 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
     def __getitem__(self, idx: int) -> LMDBChunk:
         video_id, frame_numbers = self.chunks[idx]
 
-        collected: dict[int, npt.NDArray[np.uint8]] = {}
+        frames: dict[int, npt.NDArray[np.uint8]] = {}
 
-        for _ in range(self.retry):
-            missing = np.setdiff1d(frame_numbers, list(collected.keys()))
-            if len(missing) == 0:
-                break
-            vr = PyAVVideoReader(self.path_to_videos / (video_id + ".mp4"), height=self.frame_height)
-            ims = vr[missing]
-            for frame_num, im in zip(missing, ims, strict=True):
-                if im is not None:
-                    collected[int(frame_num)] = im
+        for i in range(self.retry):
+            frame_numbers = np.setdiff1d(frame_numbers, list(frames.keys()))
+            vr = PyAVVideoReader(str(self.path_to_videos / (video_id + ".mp4")), height=self.frame_height)
+            ims = vr[frame_numbers]
 
-        missing_frames = np.setdiff1d(frame_numbers, list(collected.keys()))
-        if len(missing_frames) > 0:
-            print(
-                f"WARNING: could not read the following frames from {video_id}:",
-                ", ".join([str(x) for x in missing_frames]),
-            )
+            added_frames = 0
+            for frame_number, img in zip(frame_numbers, ims, strict=True):
+                if img is not None:
+                    frames[frame_number] = img
+                    added_frames += 1
 
-        result_ims = [collected[int(fn)] for fn in frame_numbers if int(fn) in collected]
-        result_keys = [
-            self.fname_format.format(video_id=video_id, frame_number=int(fn))
-            for fn in frame_numbers
-            if int(fn) in collected
-        ]
-        return {"ims": result_ims, "keys": result_keys}
+            if added_frames == len(frame_numbers) or (i == self.retry - 1):
+                keys = [f"{video_id}_{frame:07d}" for frame in frames]
+                ims = list(frames.values())
+
+            missing_frames = np.setdiff1d(frame_numbers, list(frames.keys()))
+
+            if len(missing_frames) > 0:
+                print(
+                    f"WARNING: could not read the following frames from {video_id}:",
+                    ", ".join([str(x) for x in missing_frames]),
+                )
+
+        return LMDBChunk(ims=ims, keys=keys)
 
 
 def collate_fn(batch: list[LMDBChunk]) -> LMDBChunk:
