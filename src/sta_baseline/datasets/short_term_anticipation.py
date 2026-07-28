@@ -86,7 +86,7 @@ class PyAVVideoReader:
         self.audio_buffer_frames = audio_buffer_frames
         self.height = height
 
-    def __getitem__(self, frame_list: FrameList) -> list[np.ndarray]:
+    def __getitem__(self, frame_list: FrameList) -> list[np.ndarray | None]:
         """Get frames from the video based on the provided frame list.
 
         Args:
