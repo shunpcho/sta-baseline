@@ -1,7 +1,6 @@
 import io
 from fractions import Fraction
 from pathlib import Path
-from typing import TypeAlias
 
 import av
 import imutils
@@ -10,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from cv2 import imdecode, imencode, IMREAD_COLOR
 
-FrameList: TypeAlias = int | float | list[int | float] | tuple[int | float, ...]
+type FrameList = int | float | list[int | float] | tuple[int | float, ...]
 
 
 def _get_frames(
