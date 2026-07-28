@@ -30,7 +30,7 @@ def _get_frames(
     video_start = video_stream.start_time or 0
     video_base = video_stream.time_base
     fps = video_stream.average_rate
-    video_pt_diff = pts_difference_pre_frame(fps, video_base)
+    video_pt_diff = pts_difference_per_frame(fps, video_base)
 
     audio_buffer_pts = frame_index_to_pts(audio_buffer_frames, 0, video_pt_diff) if include_audio else 0
 
@@ -55,7 +55,7 @@ def _get_frames(
     return result
 
 
-def pts_difference_pre_frame(fps: Fraction, time_base: Fraction) -> int:
+def pts_difference_per_frame(fps: Fraction, time_base: Fraction) -> int:
     return round(1 / fps / time_base)
 
 
