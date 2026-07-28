@@ -102,7 +102,7 @@ class LMDBAnnotation(TypedDict):
     clip_frame: int
 
 
-def _get_annotation_video_id(annotation: Annotation, flag: str) -> str:
+def _get_annotation_video_id(annotation: LMDBAnnotation, flag: str) -> str:
     if flag == "clip_uid" and "clip_uid" in annotation:
         return annotation["clip_uid"]
     if flag == "video_uid" and "video_uid" in annotation:
