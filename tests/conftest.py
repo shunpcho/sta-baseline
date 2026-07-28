@@ -30,9 +30,11 @@ def _install_torch_stub() -> None:
     mock_data.DataLoader = MagicMock()
 
     mock_utils = MagicMock()
+    mock_utils.__path__ = []  # make importlib treat this as a package
     mock_utils.data = mock_data
 
     mock_torch = MagicMock()
+    mock_torch.__path__ = []  # make importlib treat this as a package
     mock_torch.utils = mock_utils
 
     sys.modules.setdefault("torch", mock_torch)
