@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 # Add script directory so PyAVSTADataset / collate_fn can be imported
-sys.path.insert(0, str(Path(__file__).parent.parent / "script"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from dump_frame_to_lmdb_files import collate_fn, PyAVSTADataset
 
@@ -38,7 +38,8 @@ _FRAME_FORMAT = "{video_id:s}_{frame_number:07d}"
 
 
 def _make_annotation(video_uid: str, frame: int) -> dict:
-    return {"video_uid": video_uid, "frame": frame}
+    """Create a test annotation with video_uid and frame keys."""
+    return {"video_uid": video_uid, "frame": frame, "clip_uid": video_uid, "clip_frame": frame}
 
 
 def _make_dataset(
@@ -49,12 +50,14 @@ def _make_dataset(
     context_frames: int = 4,
     max_chunk_size: int = 32,
     fname_format: str = _FRAME_FORMAT,
+    flag: str = "video_uid",
 ) -> PyAVSTADataset:
     """Helper to create a PyAVSTADataset without real video files."""
     ds = PyAVSTADataset.__new__(PyAVSTADataset)
     # Call __init__ directly with a fake path (no videos are opened here)
     PyAVSTADataset.__init__(
         ds,
+        flag=flag,
         video_uid=video_uid,
         annotations=annotations,
         path_to_videos=Path("/fake/videos"),
@@ -142,7 +145,7 @@ class TestPyAVSTADatasetInit:
     def test_non_consecutive_frames_split_into_multiple_chunks(self) -> None:
         # Two annotations for the same video, far apart → 2 consecutive groups
         ann = [
-            _make_annotation("vid_a", frame=3),   # frames 0-3
+            _make_annotation("vid_a", frame=3),  # frames 0-3
             _make_annotation("vid_a", frame=10),  # frames 7-10 (context_frames=4)
         ]
         ds = _make_dataset(ann, context_frames=4)
@@ -283,6 +286,24 @@ class TestPyAVSTADatasetGetItem:
 
         captured = capsys.readouterr()
         assert "WARNING" in captured.out
+
+    def test_empty_frame_numbers_returns_empty_output(self) -> None:
+        ds = self._make_getitem_dataset("vid_a", [])
+
+        result = ds[0]
+
+        assert result == {"ims": [], "keys": []}
+
+    def test_empty_frame_numbers_do_not_call_reader(self, tmp_path: Path) -> None:
+        ds = self._make_getitem_dataset("vid_a", [])
+        ds.path_to_videos = tmp_path
+        (tmp_path / "vid_a.mp4").write_bytes(b"dummy")
+
+        with patch("dump_frame_to_lmdb_files.PyAVVideoReader") as mock_reader:
+            result = ds[0]
+
+        assert result == {"ims": [], "keys": []}
+        mock_reader.assert_not_called()
 
     def test_ims_and_keys_same_length(self) -> None:
         ds = self._make_getitem_dataset("vid_a", [0, 1, 2, 3])
