@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, PyAVVideoReader
+from sta_baseline.utils.type_alias import FHOSTAAnnotation
 
 
 def main() -> None:
@@ -50,14 +51,29 @@ def main() -> None:
         test = json.load(f)
 
     # Merge all annotations
-    annotations: list[str] = []
+    fho_sta_annotations: list[FHOSTAAnnotation] = []
     for split in [train, val, test]:
-        annotations += split["annotations"]
+        fho_sta_annotations += split["annotations"]
+
+    # Filter annotations
+    annotations: list[LMDBAnnotation] = [
+        LMDBAnnotation(
+            video_uid=annotation.get("video_uid", ""),
+            frame=annotation.get("frame", 0),
+            clip_uid=annotation.get("clip_uid", ""),
+            clip_frame=annotation.get("clip_frame", 0),
+        )
+        for annotation in fho_sta_annotations
+    ]
+
+    # Which 'video_uid' or 'clip_uid' to sample from.
+    flag = "clip_uid" if args.path_to_videos.name == "clips" else "video_uid"
 
     lmdb_store = Ego4DHLMDB(args.path_to_output_lmdbs, frame_template=args.fname_format)
 
     # Define the dataset and dataloader
     dest = PyAVSTADataset(
+        flag=flag,
         video_uid=args.video_uid,
         annotations=annotations,
         path_to_videos=args.path_to_videos,
@@ -79,38 +95,27 @@ def main() -> None:
             lmdb_store.put_batch(parent, these_keys, these_frames)
 
 
-class Annotation(TypedDict):
+class LMDBAnnotation(TypedDict):
     video_uid: str
     frame: int
     clip_uid: str
     clip_frame: int
 
 
-def _get_annotation_video_id(annotation: Annotation) -> str:
-    if "clip_uid" in annotation:
+def _get_annotation_video_id(annotation: Annotation, flag: str) -> str:
+    if flag == "clip_uid" and "clip_uid" in annotation:
         return annotation["clip_uid"]
-    if "video_uid" in annotation:
+    if flag == "video_uid" and "video_uid" in annotation:
         return annotation["video_uid"]
-    raise KeyError("Annotation must contain either 'clip_uid' or 'video_uid'")
+    raise KeyError(f"Annotation must contain the '{flag}' key")
 
 
-def _get_annotation_frame_number(annotation: Annotation) -> int:
-    if "clip_frame" in annotation:
+def _get_annotation_frame_number(annotation: Annotation, flag: str) -> int:
+    if flag == "clip_uid" and "clip_frame" in annotation:
         return annotation["clip_frame"]
-    if "frame" in annotation:
+    if flag == "video_uid" and "frame" in annotation:
         return annotation["frame"]
-    raise KeyError("Annotation must contain either 'clip_frame' or 'frame'")
-
-
-class FrameData(TypedDict):
-    video_id: list[npt.NDArray[np.int_]]
-    frame_number: int
-    frame: np.ndarray
-
-
-class FrameChunk(TypedDict):
-    frame_numbers: list[int]
-    imgs: list[npt.NDArray[np.uint8]]
+    raise KeyError(f"Annotation must contain the frame number for '{flag}'")
 
 
 class LMDBChunk(TypedDict):
@@ -121,8 +126,9 @@ class LMDBChunk(TypedDict):
 class PyAVSTADataset(Dataset[LMDBChunk]):
     def __init__(
         self,
+        flag: str,
         video_uid: list[str] | None,
-        annotations: list[Annotation],
+        annotations: list[LMDBAnnotation],
         path_to_videos: Path,
         existing_keys: list[bytes],
         context_frames: int = 32,
@@ -135,6 +141,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         """Initialize the dataset with annotations, video paths, and existing keys.
 
         Args:
+            flag: Either 'clip_uid' or 'video_uid' to determine which identifier to use.
             video_uid: List of unique video identifiers to filter the annotations.
             annotations: List of annotations for the dataset.
             path_to_videos: Path to the directory containing the video files.
@@ -146,7 +153,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             fname_format: Format string for generating frame keys.
             retry: Number of times to retry loading a video in case of failure.
         """
+        print(f"Video UID filter: {flag}")
         print(f"Sampling from {len(annotations)} annotations with a temporal context of {context_frames / fps} seconds")
+
         existing_frames: dict[str, list[int]] = defaultdict(list)
         for key in existing_keys:
             key_str = str(key.decode("utf-8"))
@@ -158,12 +167,12 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.frame_height = frame_height
         self.fname_format = fname_format
         if video_uid is not None:
-            annotations = [a for a in annotations if _get_annotation_video_id(a) in video_uid]
+            annotations = [a for a in annotations if _get_annotation_video_id(a, flag) in video_uid]
 
         frames_per_video: dict[str, list[int]] = defaultdict(list)
         for annotation in annotations:
-            video_id = _get_annotation_video_id(annotation)
-            last_frame = _get_annotation_frame_number(annotation)
+            video_id = _get_annotation_video_id(annotation, flag)
+            last_frame = _get_annotation_frame_number(annotation, flag)
             first_frame = np.max([0, last_frame - context_frames + 1])
             frame_numbers = np.arange(first_frame, last_frame + 1)
             frames_per_video[video_id].extend(frame_numbers)
@@ -184,9 +193,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
                         self.chunks.append((video_id, chunk))
                         total_frames += len(chunk)
                     else:
-                        for chunk in np.array_split(chunk, np.ceil(len(chunk) / max_chunk_size)):
-                            self.chunks.append((video_id, chunk))
-                            total_frames += len(chunk)
+                        for subchunk in np.array_split(chunk, np.ceil(len(chunk) / max_chunk_size)):
+                            self.chunks.append((video_id, subchunk))
+                            total_frames += len(subchunk)
 
         total_frames += len(existing_keys)
 
@@ -211,7 +220,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
 
         frames: dict[int, npt.NDArray[np.uint8]] = {}
 
-        for i in range(self.retry):
+        for _ in range(self.retry):
             remaining_frame_numbers = np.setdiff1d(frame_numbers, list(frames.keys()))
             if len(remaining_frame_numbers) == 0:
                 ordered_frame_numbers = sorted(frames)
