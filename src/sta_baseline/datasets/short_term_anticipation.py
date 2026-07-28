@@ -19,6 +19,9 @@ def _get_frames(
     include_audio: bool = False,
     audio_buffer_frames: int = 0,
 ) -> list[av.frame.Frame | None]:
+    if len(frame_list) == 0:
+        return []
+
     if len(container.streams.video) == 0:
         raise ValueError(f"No video streams found in {container.name}")
     if len(container.streams.video) > 1:

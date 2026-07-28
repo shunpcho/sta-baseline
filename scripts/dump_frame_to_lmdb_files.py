@@ -86,6 +86,22 @@ class Annotation(TypedDict):
     clip_frame: int
 
 
+def _get_annotation_video_id(annotation: Annotation) -> str:
+    if "clip_uid" in annotation:
+        return annotation["clip_uid"]
+    if "video_uid" in annotation:
+        return annotation["video_uid"]
+    raise KeyError("Annotation must contain either 'clip_uid' or 'video_uid'")
+
+
+def _get_annotation_frame_number(annotation: Annotation) -> int:
+    if "clip_frame" in annotation:
+        return annotation["clip_frame"]
+    if "frame" in annotation:
+        return annotation["frame"]
+    raise KeyError("Annotation must contain either 'clip_frame' or 'frame'")
+
+
 class FrameData(TypedDict):
     video_id: list[npt.NDArray[np.int_]]
     frame_number: int
@@ -142,12 +158,12 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.frame_height = frame_height
         self.fname_format = fname_format
         if video_uid is not None:
-            annotations = [a for a in annotations if a["clip_uid"] in video_uid]
+            annotations = [a for a in annotations if _get_annotation_video_id(a) in video_uid]
 
         frames_per_video: dict[str, list[int]] = defaultdict(list)
         for annotation in annotations:
-            video_id = annotation["clip_uid"]
-            last_frame = annotation["clip_frame"]
+            video_id = _get_annotation_video_id(annotation)
+            last_frame = _get_annotation_frame_number(annotation)
             first_frame = np.max([0, last_frame - context_frames + 1])
             frame_numbers = np.arange(first_frame, last_frame + 1)
             frames_per_video[video_id].extend(frame_numbers)
@@ -188,24 +204,49 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
     def __getitem__(self, idx: int) -> LMDBChunk:
         video_id, frame_numbers = self.chunks[idx]
 
+        if len(frame_numbers) == 0:
+            return LMDBChunk(ims=[], keys=[])
+
+        video_path = self.path_to_videos / (video_id + ".mp4")
+
         frames: dict[int, npt.NDArray[np.uint8]] = {}
 
         for i in range(self.retry):
-            frame_numbers = np.setdiff1d(frame_numbers, list(frames.keys()))
-            vr = PyAVVideoReader(str(self.path_to_videos / (video_id + ".mp4")), height=self.frame_height)
-            ims = vr[frame_numbers]
+            remaining_frame_numbers = np.setdiff1d(frame_numbers, list(frames.keys()))
+            if len(remaining_frame_numbers) == 0:
+                ordered_frame_numbers = sorted(frames)
+                return LMDBChunk(
+                    ims=[frames[frame_number] for frame_number in ordered_frame_numbers],
+                    keys=[
+                        self.fname_format.format(video_id=video_id, frame_number=frame_number)
+                        for frame_number in ordered_frame_numbers
+                    ],
+                )
+
+            try:
+                vr = PyAVVideoReader(str(video_path), height=self.frame_height)
+                ims = vr[remaining_frame_numbers]
+            except FileNotFoundError:
+                print(f"WARNING: video not found, skipping {video_id}: {video_path}")
+                return LMDBChunk(ims=[], keys=[])
 
             added_frames = 0
-            for frame_number, img in zip(frame_numbers, ims, strict=True):
+            for frame_number, img in zip(remaining_frame_numbers, ims, strict=True):
                 if img is not None:
                     frames[frame_number] = img
                     added_frames += 1
 
-            if added_frames == len(frame_numbers) or (i == self.retry - 1):
-                keys = [f"{video_id}_{frame:07d}" for frame in frames]
-                ims = list(frames.values())
+            if added_frames == len(remaining_frame_numbers):
+                ordered_frame_numbers = sorted(frames)
+                return LMDBChunk(
+                    ims=[frames[frame_number] for frame_number in ordered_frame_numbers],
+                    keys=[
+                        self.fname_format.format(video_id=video_id, frame_number=frame_number)
+                        for frame_number in ordered_frame_numbers
+                    ],
+                )
 
-            missing_frames = np.setdiff1d(frame_numbers, list(frames.keys()))
+            missing_frames = np.setdiff1d(remaining_frame_numbers, list(frames.keys()))
 
             if len(missing_frames) > 0:
                 print(
@@ -213,7 +254,14 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
                     ", ".join([str(x) for x in missing_frames]),
                 )
 
-        return LMDBChunk(ims=ims, keys=keys)
+        ordered_frame_numbers = sorted(frames)
+        return LMDBChunk(
+            ims=[frames[frame_number] for frame_number in ordered_frame_numbers],
+            keys=[
+                self.fname_format.format(video_id=video_id, frame_number=frame_number)
+                for frame_number in ordered_frame_numbers
+            ],
+        )
 
 
 def collate_fn(batch: list[LMDBChunk]) -> LMDBChunk:
@@ -225,6 +273,7 @@ def collate_fn(batch: list[LMDBChunk]) -> LMDBChunk:
     Returns:
         A dictionary containing a list of frames under 'ims' and a list of corresponding keys under 'keys'.
     """
+    batch = [sample for sample in batch if sample["ims"] or sample["keys"]]
     frames = [sample["ims"] for sample in batch]
     keys = [sample["keys"] for sample in batch]
     frames = list(chain.from_iterable(frames))
