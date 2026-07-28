@@ -36,7 +36,7 @@
       ├── annotations/
       │   ├── fho_sta_train.json
       │   ├── fho_sta_val.json
-      │   └── fho_sta_test.json
+      │   └── fho_sta_test_unannotated.json
       └── clips/
           └── fho_sta/
               ├── clip_000001.mp4
