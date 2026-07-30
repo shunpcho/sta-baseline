@@ -4,9 +4,10 @@ import numpy as np
 import torch
 
 
-def random_short_side_scale_jitter(images, min_size, max_size, boxes=None, inverse_uniform_sampling=False):
-    """Perform a spatial short scale jittering on the given images and
-    corresponding boxes.
+def random_short_side_scale_jitter(
+    images: torch.Tensor, min_size: int, max_size: int, boxes: np.ndarray = None, inverse_uniform_sampling: bool = False
+) -> tuple[torch.Tensor, np.ndarray | None]:
+    """Perform a spatial short scale jittering on the given images and corresponding boxes.
 
     Args:
         images (tensor): images to perform scale jitter. Dimension is
@@ -26,9 +27,9 @@ def random_short_side_scale_jitter(images, min_size, max_size, boxes=None, inver
             `num boxes` x 4.
     """
     if inverse_uniform_sampling:
-        size = int(round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size)))
+        size = round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size))
     else:
-        size = int(round(np.random.uniform(min_size, max_size)))
+        size = round(np.random.uniform(min_size, max_size))
 
     height = images.shape[2]
     width = images.shape[3]
@@ -37,11 +38,11 @@ def random_short_side_scale_jitter(images, min_size, max_size, boxes=None, inver
     new_width = size
     new_height = size
     if width < height:
-        new_height = int(math.floor((float(height) / width) * size))
+        new_height = math.floor((float(height) / width) * size)
         if boxes is not None:
             boxes = boxes * float(new_height) / height
     else:
-        new_width = int(math.floor((float(width) / height) * size))
+        new_width = math.floor((float(width) / height) * size)
         if boxes is not None:
             boxes = boxes * float(new_width) / width
 
@@ -51,7 +52,7 @@ def random_short_side_scale_jitter(images, min_size, max_size, boxes=None, inver
     )
 
 
-def crop_boxes(boxes, x_offset, y_offset):
+def crop_boxes(boxes: np.ndarray | None, x_offset: int, y_offset: int) -> np.ndarray | None:
     """Peform crop on the bounding boxes given the offsets.
 
     Args:
@@ -71,7 +72,9 @@ def crop_boxes(boxes, x_offset, y_offset):
     return cropped_boxes
 
 
-def random_crop(images, size, boxes=None):
+def random_crop(
+    images: torch.Tensor, size: int, boxes: np.ndarray | None = None
+) -> tuple[torch.Tensor, np.ndarray | None]:
     """Perform random spatial crop on the given images and corresponding boxes.
 
     Args:
@@ -88,7 +91,7 @@ def random_crop(images, size, boxes=None):
             `num boxes` x 4.
     """
     if images.shape[2] == size and images.shape[3] == size:
-        return images
+        return images, boxes
     height = images.shape[2]
     width = images.shape[3]
     y_offset = 0
@@ -104,7 +107,9 @@ def random_crop(images, size, boxes=None):
     return cropped, cropped_boxes
 
 
-def horizontal_flip(prob, images, boxes=None):
+def horizontal_flip(
+    prob: float, images: torch.Tensor, boxes: np.ndarray | None = None
+) -> tuple[torch.Tensor, np.ndarray | None]:
     """Perform horizontal flip on the given images and corresponding boxes.
 
     Args:
@@ -120,10 +125,7 @@ def horizontal_flip(prob, images, boxes=None):
         flipped_boxes (ndarray or None): the flipped boxes with dimension of
             `num boxes` x 4.
     """
-    if boxes is None:
-        flipped_boxes = None
-    else:
-        flipped_boxes = boxes.copy()
+    flipped_boxes = boxes.copy() if boxes is not None else None
 
     if np.random.uniform() < prob:
         images = images.flip(-1)
@@ -135,7 +137,9 @@ def horizontal_flip(prob, images, boxes=None):
     return images, flipped_boxes
 
 
-def uniform_crop(images, size, spatial_idx, boxes=None):
+def uniform_crop(
+    images: torch.Tensor, size: int, spatial_idx: int, boxes: np.ndarray | None = None
+) -> tuple[torch.Tensor, np.ndarray | None]:
     """Perform uniform spatial sampling on the images and corresponding boxes.
 
     Args:
@@ -154,12 +158,12 @@ def uniform_crop(images, size, spatial_idx, boxes=None):
         cropped_boxes (ndarray or None): the cropped boxes with dimension of
             `num boxes` x 4.
     """
-    assert spatial_idx in [0, 1, 2]
+    assert spatial_idx in {0, 1, 2}
     height = images.shape[2]
     width = images.shape[3]
 
-    y_offset = int(math.ceil((height - size) / 2))
-    x_offset = int(math.ceil((width - size) / 2))
+    y_offset = math.ceil((height - size) / 2)
+    x_offset = math.ceil((width - size) / 2)
 
     if height > width:
         if spatial_idx == 0:
@@ -177,7 +181,7 @@ def uniform_crop(images, size, spatial_idx, boxes=None):
     return cropped, cropped_boxes
 
 
-def clip_boxes_to_image(boxes, height, width):
+def clip_boxes_to_image(boxes: np.ndarray, height: int, width: int) -> np.ndarray:
     """Clip an array of boxes to an image with the given height and width.
 
     Args:
@@ -196,7 +200,7 @@ def clip_boxes_to_image(boxes, height, width):
     return clipped_boxes
 
 
-def blend(images1, images2, alpha):
+def blend(images1: torch.Tensor, images2: torch.Tensor, alpha: float) -> torch.Tensor:
     """Blend two images with a given weight alpha.
 
     Args:
@@ -213,9 +217,8 @@ def blend(images1, images2, alpha):
     return images1 * alpha + images2 * (1 - alpha)
 
 
-def grayscale(images):
-    """Get the grayscale for the input images. The channels of images should be
-    in order BGR.
+def grayscale(images: torch.Tensor) -> torch.Tensor:
+    """Get the grayscale for the input images. The channels of images should be in order BGR.
 
     Args:
         images (tensor): the input images for getting grayscale. Dimension is
@@ -234,9 +237,10 @@ def grayscale(images):
     return img_gray
 
 
-def color_jitter(images, img_brightness=0, img_contrast=0, img_saturation=0):
-    """Perfrom a color jittering on the input images. The channels of images
-    should be in order BGR.
+def color_jitter(
+    images: torch.Tensor, img_brightness: float = 0, img_contrast: float = 0, img_saturation: float = 0
+) -> torch.Tensor:
+    """Perform a color jittering on the input images. The channels of images should be in order BGR.
 
     Args:
         images (tensor): images to perform color jitter. Dimension is
@@ -269,9 +273,8 @@ def color_jitter(images, img_brightness=0, img_contrast=0, img_saturation=0):
     return images
 
 
-def brightness_jitter(var, images):
-    """Perfrom brightness jittering on the input images. The channels of images
-    should be in order BGR.
+def brightness_jitter(var: float, images: torch.Tensor) -> torch.Tensor:
+    """Perform brightness jittering on the input images. The channels of images should be in order BGR.
 
     Args:
         var (float): jitter ratio for brightness.
@@ -289,9 +292,8 @@ def brightness_jitter(var, images):
     return images
 
 
-def contrast_jitter(var, images):
-    """Perfrom contrast jittering on the input images. The channels of images
-    should be in order BGR.
+def contrast_jitter(var: float, images: torch.Tensor) -> torch.Tensor:
+    """Perform contrast jittering on the input images. The channels of images should be in order BGR.
 
     Args:
         var (float): jitter ratio for contrast.
@@ -310,9 +312,8 @@ def contrast_jitter(var, images):
     return images
 
 
-def saturation_jitter(var, images):
-    """Perfrom saturation jittering on the input images. The channels of images
-    should be in order BGR.
+def saturation_jitter(var: float, images: torch.Tensor) -> torch.Tensor:
+    """Perform saturation jittering on the input images. The channels of images should be in order BGR.
 
     Args:
         var (float): jitter ratio for saturation.
@@ -330,7 +331,7 @@ def saturation_jitter(var, images):
     return images
 
 
-def lighting_jitter(images, alphastd, eigval, eigvec):
+def lighting_jitter(images: torch.Tensor, alphastd: float, eigval: list, eigvec: list[list]) -> torch.Tensor:
     """Perform AlexNet-style PCA jitter on the given images.
 
     Args:
@@ -358,8 +359,8 @@ def lighting_jitter(images, alphastd, eigval, eigvec):
     return out_images
 
 
-def color_normalization(images, mean, stddev):
-    """Perform color nomration on the given images.
+def color_normalization(images: torch.Tensor, mean: list, stddev: list) -> torch.Tensor:
+    """Perform color normalization on the given images.
 
     Args:
         images (tensor): images to perform color normalization. Dimension is
@@ -368,7 +369,7 @@ def color_normalization(images, mean, stddev):
         stddev (list): standard deviations for normalization.
 
     Returns:
-        out_images (tensor): the noramlized images, the dimension is
+        out_images (tensor): the normalized images, the dimension is
             `num frames` x `channel` x `height` x `width`.
     """
     assert len(mean) == images.shape[1], "channel mean not computed properly"

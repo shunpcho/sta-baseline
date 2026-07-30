@@ -22,7 +22,7 @@ from torch.utils.data import Dataset
 from sta_baseline.datasets import cv2_transform
 from sta_baseline.datasets.build import DATASET_REGISTRY
 from sta_baseline.evaluation import compute_iou
-from sta_baseline.utils import dataset_utils, logging, transform
+from sta_baseline.utils import datasets_utils, logging, transform
 from sta_baseline.utils.type_alias import Split
 
 type FrameList = int | float | list[int | float] | tuple[int | float, ...]
@@ -720,7 +720,7 @@ class Ego4dShortTermAnticipation(Dataset):
 
         if gt_boxes is None:  # unlabeled example
             video_tensor, pred_boxes = self._preprocess_frames_and_boxes(frames, pred_boxes)
-            imgs = dataset_utils.pack_pathway_output(self.cfg, video_tensor)
+            imgs = datasets_utils.pack_pathway_output(self.cfg, video_tensor)
 
             extra_data = {
                 "orig_pred_boxes": orig_pred_boxes,
@@ -767,7 +767,7 @@ class Ego4dShortTermAnticipation(Dataset):
                 "ttcs": gt_ttc_targets,
             }
 
-            imgs = dataset_utils.pack_pathway_output(self.cfg, video_tensor)
+            imgs = datasets_utils.pack_pathway_output(self.cfg, video_tensor)
 
             # copy the verb labels of the matched boxes
             verb_labels = gt_verb_labels[matches]

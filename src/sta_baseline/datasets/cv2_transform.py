@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 
-def clip_boxes_to_image(boxes, height, width):
+def clip_boxes_to_image(boxes: np.ndarray, height: int, width: int) -> np.ndarray:
     """Clip the boxes with the height and width of the image size.
 
     Args:
@@ -21,9 +21,10 @@ def clip_boxes_to_image(boxes, height, width):
     return boxes
 
 
-def random_short_side_scale_jitter_list(images, min_size, max_size, boxes=None):
-    """Perform a spatial short scale jittering on the given images and
-    corresponding boxes.
+def random_short_side_scale_jitter_list(
+    images: list[np.ndarray], min_size: int, max_size: int, boxes: list[np.ndarray] | None = None
+) -> tuple[list[np.ndarray], list[np.ndarray] | None]:
+    """Perform a spatial short scale jittering on the given images and corresponding boxes.
 
     Args:
         images (list): list of images to perform scale jitter. Dimension is
@@ -39,7 +40,7 @@ def random_short_side_scale_jitter_list(images, min_size, max_size, boxes=None):
         (ndarray or None): the scaled boxes with dimension of
             `num boxes` x 4.
     """
-    size = int(round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size)))
+    size = round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size))
 
     height = images[0].shape[0]
     width = images[0].shape[1]
@@ -48,11 +49,11 @@ def random_short_side_scale_jitter_list(images, min_size, max_size, boxes=None):
     new_width = size
     new_height = size
     if width < height:
-        new_height = int(math.floor((float(height) / width) * size))
+        new_height = math.floor((float(height) / width) * size)
         if boxes is not None:
             boxes = [proposal * float(new_height) / height for proposal in boxes]
     else:
-        new_width = int(math.floor((float(width) / height) * size))
+        new_width = math.floor((float(width) / height) * size)
         if boxes is not None:
             boxes = [proposal * float(new_width) / width for proposal in boxes]
     return (
@@ -64,7 +65,7 @@ def random_short_side_scale_jitter_list(images, min_size, max_size, boxes=None):
     )
 
 
-def scale(size, image):
+def scale(size: int, image: np.ndarray) -> np.ndarray:
     """Scale the short side of the image to size.
 
     Args:
@@ -90,7 +91,7 @@ def scale(size, image):
     return img.astype(np.float32)
 
 
-def scale_boxes(size, boxes, height, width):
+def scale_boxes(size: int, boxes: np.ndarray, height: int, width: int) -> np.ndarray:
     """Scale the short side of the box to size.
 
     Args:
@@ -109,20 +110,22 @@ def scale_boxes(size, boxes, height, width):
     new_width = size
     new_height = size
     if width < height:
-        new_height = int(math.floor((float(height) / width) * size))
+        new_height = math.floor((float(height) / width) * size)
         boxes *= float(new_height) / height
     else:
-        new_width = int(math.floor((float(width) / height) * size))
+        new_width = math.floor((float(width) / height) * size)
         boxes *= float(new_width) / width
     return boxes
 
 
-def horizontal_flip_list(prob, images, order="CHW", boxes=None):
+def horizontal_flip_list(
+    prob: float, images: list[np.ndarray], order: str = "CHW", boxes: list[np.ndarray] | None = None
+) -> tuple[list[np.ndarray], list[np.ndarray] | None]:
     """Horizontally flip the list of image and optional boxes.
 
     Args:
         prob (float): probability to flip.
-        image (list): ilist of images to perform short side scale. Dimension is
+        images (list): list of images to perform short side scale. Dimension is
             `height` x `width` x `channel` or `channel` x `height` x `width`.
         order (str): order of the `height`, `channel` and `width`.
         boxes (list): optional. Corresponding boxes to images.
@@ -150,12 +153,14 @@ def horizontal_flip_list(prob, images, order="CHW", boxes=None):
     return images, boxes
 
 
-def spatial_shift_crop_list(size, images, spatial_shift_pos, boxes=None):
+def spatial_shift_crop_list(
+    size: int, images: list[np.ndarray], spatial_shift_pos: int, boxes: list[np.ndarray] | None = None
+) -> tuple[list[np.ndarray], list[np.ndarray] | None]:
     """Perform left, center, or right crop of the given list of images.
 
     Args:
         size (int): size to crop.
-        image (list): ilist of images to perform short side scale. Dimension is
+        images (list[np.ndarray]): list of images to perform short side scale. Dimension is
             `height` x `width` x `channel` or `channel` x `height` x `width`.
         spatial_shift_pos (int): option includes 0 (left), 1 (middle), and
             2 (right) crop.
@@ -168,12 +173,12 @@ def spatial_shift_crop_list(size, images, spatial_shift_pos, boxes=None):
         boxes (list): optional. Corresponding boxes to images. Dimension is
             `num boxes` x 4.
     """
-    assert spatial_shift_pos in [0, 1, 2]
+    assert spatial_shift_pos in {0, 1, 2}
 
     height = images[0].shape[0]
     width = images[0].shape[1]
-    y_offset = int(math.ceil((height - size) / 2))
-    x_offset = int(math.ceil((width - size) / 2))
+    y_offset = math.ceil((height - size) / 2)
+    x_offset = math.ceil((width - size) / 2)
 
     if height > width:
         if spatial_shift_pos == 0:
@@ -196,9 +201,8 @@ def spatial_shift_crop_list(size, images, spatial_shift_pos, boxes=None):
     return cropped, boxes
 
 
-def CHW2HWC(image):
-    """Transpose the dimension from `channel` x `height` x `width` to
-        `height` x `width` x `channel`.
+def CHW2HWC(image: np.ndarray) -> np.ndarray:
+    """Transpose the dimension from `channel` x `height` x `width` to `height` x `width` x `channel`.
 
     Args:
         image (array): image to transpose.
@@ -209,9 +213,8 @@ def CHW2HWC(image):
     return image.transpose([1, 2, 0])
 
 
-def HWC2CHW(image):
-    """Transpose the dimension from `height` x `width` x `channel` to
-        `channel` x `height` x `width`.
+def HWC2CHW(image: np.ndarray) -> np.ndarray:
+    """Transpose the dimension from `height` x `width` x `channel` to `channel` x `height` x `width`.
 
     Args:
         image (array): image to transpose.
@@ -222,7 +225,9 @@ def HWC2CHW(image):
     return image.transpose([2, 0, 1])
 
 
-def color_jitter_list(images, img_brightness=0, img_contrast=0, img_saturation=0):
+def color_jitter_list(
+    images: list[np.ndarray], img_brightness: float = 0, img_contrast: float = 0, img_saturation: float = 0
+) -> list[np.ndarray]:
     """Perform color jitter on the list of images.
 
     Args:
@@ -254,11 +259,17 @@ def color_jitter_list(images, img_brightness=0, img_contrast=0, img_saturation=0
     return images
 
 
-def lighting_list(imgs, alphastd, eigval, eigvec, alpha=None):
+def lighting_list(
+    imgs: list[np.ndarray],
+    alphastd: float,
+    eigval: list[float],
+    eigvec: list[list[float]],
+    alpha: np.ndarray | None = None,
+) -> list[np.ndarray]:
     """Perform AlexNet-style PCA jitter on the given list of images.
 
     Args:
-        images (list): list of images to perform lighting jitter.
+        imgs (list): list of images to perform lighting jitter.
         alphastd (float): jitter ratio for PCA jitter.
         eigval (list): eigenvalues for PCA jitter.
         eigvec (list[list]): eigenvectors for PCA jitter.
@@ -276,12 +287,12 @@ def lighting_list(imgs, alphastd, eigval, eigvec, alpha=None):
     out_images = []
     for img in imgs:
         for idx in range(img.shape[0]):
-            img[idx] = img[idx] + rgb[2 - idx]
+            img[idx] += rgb[2 - idx]
         out_images.append(img)
     return out_images
 
 
-def color_normalization(image, mean, stddev):
+def color_normalization(image: np.ndarray, mean: list[float], stddev: list[float]) -> np.ndarray:
     """Perform color normalization on the image with the given mean and stddev.
 
     Args:
@@ -293,12 +304,12 @@ def color_normalization(image, mean, stddev):
     assert len(mean) == image.shape[0], "channel mean not computed properly"
     assert len(stddev) == image.shape[0], "channel stddev not computed properly"
     for idx in range(image.shape[0]):
-        image[idx] = image[idx] - mean[idx]
-        image[idx] = image[idx] / stddev[idx]
+        image[idx] -= mean[idx]
+        image[idx] /= stddev[idx]
     return image
 
 
-def pad_image(image, pad_size, order="CHW"):
+def pad_image(image: np.ndarray, pad_size: int, order: str = "CHW") -> np.ndarray:
     """Pad the given image with the size of pad_size.
 
     Args:
@@ -324,7 +335,7 @@ def pad_image(image, pad_size, order="CHW"):
     return img
 
 
-def horizontal_flip(prob, image, order="CHW"):
+def horizontal_flip(prob: float, image: np.ndarray, order: str = "CHW") -> np.ndarray:
     """Horizontally flip the image.
 
     Args:
@@ -335,7 +346,7 @@ def horizontal_flip(prob, image, order="CHW"):
     Returns:
         img (array): flipped image.
     """
-    assert order in ["CHW", "HWC"], f"order {order} is not supported"
+    assert order in {"CHW", "HWC"}, f"order {order} is not supported"
     if np.random.uniform() < prob:
         if order == "CHW":
             image = image[:, :, ::-1]
@@ -346,7 +357,7 @@ def horizontal_flip(prob, image, order="CHW"):
     return image
 
 
-def flip_boxes(boxes, im_width):
+def flip_boxes(boxes: np.ndarray, im_width: int) -> np.ndarray:
     """Horizontally flip the boxes.
 
     Args:
@@ -362,7 +373,7 @@ def flip_boxes(boxes, im_width):
     return boxes_flipped
 
 
-def crop_boxes(boxes, x_offset, y_offset):
+def crop_boxes(boxes: np.ndarray, x_offset: int, y_offset: int) -> np.ndarray:
     """Crop the boxes given the offsets.
 
     Args:
@@ -370,12 +381,14 @@ def crop_boxes(boxes, x_offset, y_offset):
         x_offset (int): offset on x.
         y_offset (int): offset on y.
     """
-    boxes[:, [0, 2]] = boxes[:, [0, 2]] - x_offset
-    boxes[:, [1, 3]] = boxes[:, [1, 3]] - y_offset
+    boxes[:, [0, 2]] -= x_offset
+    boxes[:, [1, 3]] -= y_offset
     return boxes
 
 
-def random_crop_list(images, size, pad_size=0, order="CHW", boxes=None):
+def random_crop_list(
+    images: list[np.ndarray], size: int, pad_size: int = 0, order: str = "CHW", boxes: list[np.ndarray] | None = None
+) -> tuple[list[np.ndarray], list[np.ndarray] | None]:
     """Perform random crop on a list of images.
 
     Args:
@@ -431,17 +444,20 @@ def random_crop_list(images, size, pad_size=0, order="CHW", boxes=None):
     return cropped, boxes
 
 
-def center_crop(size, image):
+def center_crop(size: int, image: np.ndarray) -> np.ndarray:
     """Perform center crop on input images.
 
     Args:
         size (int): size of the cropped height and width.
         image (array): the image to perform center crop.
+
+    Returns:
+        cropped (array): the cropped image.
     """
     height = image.shape[0]
     width = image.shape[1]
-    y_offset = int(math.ceil((height - size) / 2))
-    x_offset = int(math.ceil((width - size) / 2))
+    y_offset = math.ceil((height - size) / 2)
+    x_offset = math.ceil((width - size) / 2)
     cropped = image[y_offset : y_offset + size, x_offset : x_offset + size, :]
     assert cropped.shape[0] == size, "Image height not cropped properly"
     assert cropped.shape[1] == size, "Image width not cropped properly"
@@ -450,51 +466,49 @@ def center_crop(size, image):
 
 # ResNet style scale jittering: randomly select the scale from
 # [1/max_size, 1/min_size]
-def random_scale_jitter(image, min_size, max_size):
-    """Perform ResNet style random scale jittering: randomly select the scale from
-        [1/max_size, 1/min_size].
+def random_scale_jitter(image: np.ndarray, min_size: int, max_size: int) -> np.ndarray:
+    """Perform ResNet style random scale jittering: randomly select the scale from [1/max_size, 1/min_size].
 
     Args:
         image (array): image to perform random scale.
         min_size (int): min size to scale.
-        max_size (int) max size to scale.
+        max_size (int): max size to scale.
 
     Returns:
         image (array): scaled image.
     """
-    img_scale = int(round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size)))
+    img_scale = round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size))
     image = scale(img_scale, image)
     return image
 
 
-def random_scale_jitter_list(images, min_size, max_size):
-    """Perform ResNet style random scale jittering on a list of image: randomly
-        select the scale from [1/max_size, 1/min_size]. Note that all the image
-        will share the same scale.
+def random_scale_jitter_list(images: list[np.ndarray], min_size: int, max_size: int) -> list[np.ndarray]:
+    """Perform ResNet style random scale jittering on a list of image: randomly select the scale from [1/max_size, 1/min_size].
+
+    Note that all the image will share the same scale.
 
     Args:
         images (list): list of images to perform random scale.
         min_size (int): min size to scale.
-        max_size (int) max size to scale.
+        max_size (int): max size to scale.
 
     Returns:
         images (list): list of scaled image.
     """
-    img_scale = int(round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size)))
+    img_scale = round(1.0 / np.random.uniform(1.0 / max_size, 1.0 / min_size))
     return [scale(img_scale, image) for image in images]
 
 
-def random_sized_crop(image, size, area_frac=0.08):
-    """Perform random sized cropping on the given image. Random crop with size
-        8% - 100% image area and aspect ratio in [3/4, 4/3].
+def random_sized_crop(image: np.ndarray, size: int, area_frac: float = 0.08) -> np.ndarray:
+    """Perform random sized cropping on the given image. Random crop with size 8% - 100% image area and aspect ratio in [3/4, 4/3].
 
     Args:
-        image (array): image to crop.
+        image (np.ndarray): image to crop.
         size (int): size to crop.
         area_frac (float): area of fraction.
 
     Returns:
-        (array): cropped image.
+        np.ndarray: cropped image.
     """
     for _ in range(10):
         height = image.shape[0]
@@ -502,39 +516,34 @@ def random_sized_crop(image, size, area_frac=0.08):
         area = height * width
         target_area = np.random.uniform(area_frac, 1.0) * area
         aspect_ratio = np.random.uniform(3.0 / 4.0, 4.0 / 3.0)
-        w = int(round(math.sqrt(float(target_area) * aspect_ratio)))
-        h = int(round(math.sqrt(float(target_area) / aspect_ratio)))
+        w = round(math.sqrt(float(target_area) * aspect_ratio))
+        h = round(math.sqrt(float(target_area) / aspect_ratio))
         if np.random.uniform() < 0.5:
             w, h = h, w
         if h <= height and w <= width:
-            if height == h:
-                y_offset = 0
-            else:
-                y_offset = np.random.randint(0, height - h)
-            if width == w:
-                x_offset = 0
-            else:
-                x_offset = np.random.randint(0, width - w)
+            y_offset = 0 if height == h else np.random.randint(0, height - h)
+            x_offset = 0 if width == w else np.random.randint(0, width - w)
             y_offset = int(y_offset)
             x_offset = int(x_offset)
             cropped = image[y_offset : y_offset + h, x_offset : x_offset + w, :]
-            assert cropped.shape[0] == h and cropped.shape[1] == w, "Wrong crop size"
+            assert cropped.shape[0] == h, "Wrong crop size"
+            assert cropped.shape[1] == w, "Wrong crop size"
             cropped = cv2.resize(cropped, (size, size), interpolation=cv2.INTER_LINEAR)
             return cropped.astype(np.float32)
     return center_crop(size, scale(size, image))
 
 
-def lighting(img, alphastd, eigval, eigvec):
+def lighting(img: np.ndarray, alphastd: float, eigval: np.ndarray, eigvec: np.ndarray) -> np.ndarray:
     """Perform AlexNet-style PCA jitter on the given image.
 
     Args:
-        image (array): list of images to perform lighting jitter.
+        img (np.ndarray): image to perform lighting jitter.
         alphastd (float): jitter ratio for PCA jitter.
-        eigval (array): eigenvalues for PCA jitter.
-        eigvec (list): eigenvectors for PCA jitter.
+        eigval (np.ndarray): eigenvalues for PCA jitter.
+        eigvec (np.ndarray): eigenvectors for PCA jitter.
 
     Returns:
-        img (tensor): the jittered image.
+        img (np.ndarray): the jittered image.
     """
     if alphastd == 0:
         return img
@@ -544,21 +553,20 @@ def lighting(img, alphastd, eigval, eigvec):
     eig_val = np.reshape(eigval, (1, 3))
     rgb = np.sum(eig_vec * np.repeat(alpha, 3, axis=0) * np.repeat(eig_val, 3, axis=0), axis=1)
     for idx in range(img.shape[0]):
-        img[idx] = img[idx] + rgb[2 - idx]
+        img[idx] += rgb[2 - idx]
     return img
 
 
-def random_sized_crop_list(images, size, crop_area_fraction=0.08):
-    """Perform random sized cropping on the given list of images. Random crop with
-        size 8% - 100% image area and aspect ratio in [3/4, 4/3].
+def random_sized_crop_list(images: list[np.ndarray], size: int, crop_area_fraction: float = 0.08) -> list[np.ndarray]:
+    """Perform random sized cropping on the given list of images. Random crop with size 8% - 100% image area and aspect ratio in [3/4, 4/3].
 
     Args:
-        images (list): image to crop.
+        images (list[np.ndarray]): list of images to crop.
         size (int): size to crop.
-        area_frac (float): area of fraction.
+        crop_area_fraction (float): area of fraction.
 
     Returns:
-        (list): list of cropped image.
+        (list[np.ndarray]): list of cropped image.
     """
     for _ in range(10):
         height = images[0].shape[0]
@@ -566,29 +574,25 @@ def random_sized_crop_list(images, size, crop_area_fraction=0.08):
         area = height * width
         target_area = np.random.uniform(crop_area_fraction, 1.0) * area
         aspect_ratio = np.random.uniform(3.0 / 4.0, 4.0 / 3.0)
-        w = int(round(math.sqrt(float(target_area) * aspect_ratio)))
-        h = int(round(math.sqrt(float(target_area) / aspect_ratio)))
+        w = round(math.sqrt(float(target_area) * aspect_ratio))
+        h = round(math.sqrt(float(target_area) / aspect_ratio))
         if np.random.uniform() < 0.5:
             w, h = h, w
         if h <= height and w <= width:
-            if height == h:
-                y_offset = 0
-            else:
-                y_offset = np.random.randint(0, height - h)
-            if width == w:
-                x_offset = 0
-            else:
-                x_offset = np.random.randint(0, width - w)
+            y_offset = 0 if height == h else np.random.randint(0, height - h)
+            x_offset = 0 if width == w else np.random.randint(0, width - w)
+
             y_offset = int(y_offset)
             x_offset = int(x_offset)
 
-            croppsed_images = []
+            cropped_images = []
             for image in images:
                 cropped = image[y_offset : y_offset + h, x_offset : x_offset + w, :]
-                assert cropped.shape[0] == h and cropped.shape[1] == w, "Wrong crop size"
+                assert cropped.shape[0] == h, "Wrong crop size"
+                assert cropped.shape[1] == w, "Wrong crop size"
                 cropped = cv2.resize(cropped, (size, size), interpolation=cv2.INTER_LINEAR)
-                croppsed_images.append(cropped.astype(np.float32))
-            return croppsed_images
+                cropped_images.append(cropped.astype(np.float32))
+            return cropped_images
 
     return [center_crop(size, scale(size, image)) for image in images]
 
@@ -597,15 +601,15 @@ def blend(image1, image2, alpha):
     return image1 * alpha + image2 * (1 - alpha)
 
 
-def grayscale(image):
+def grayscale(image: np.ndarray) -> np.ndarray:
     """Convert the image to gray scale.
 
     Args:
-        image (tensor): image to convert to gray scale. Dimension is
+        image (np.ndarray): image to convert to gray scale. Dimension is
             `channel` x `height` x `width`.
 
     Returns:
-        img_gray (tensor): image in gray scale.
+        img_gray (np.ndarray): image in gray scale.
     """
     # R -> 0.299, G -> 0.587, B -> 0.114.
     img_gray = np.copy(image)
@@ -616,45 +620,45 @@ def grayscale(image):
     return img_gray
 
 
-def saturation(var, image):
+def saturation(var: float, image: np.ndarray) -> np.ndarray:
     """Perform color saturation on the given image.
 
     Args:
         var (float): variance.
-        image (array): image to perform color saturation.
+        image (np.ndarray): image to perform color saturation.
 
     Returns:
-        (array): image that performed color saturation.
+        np.ndarray: image that performed color saturation.
     """
     img_gray = grayscale(image)
     alpha = 1.0 + np.random.uniform(-var, var)
     return blend(image, img_gray, alpha)
 
 
-def brightness(var, image):
+def brightness(var: float, image: np.ndarray) -> np.ndarray:
     """Perform color brightness on the given image.
 
     Args:
         var (float): variance.
-        image (array): image to perform color brightness.
+        image (np.ndarray): image to perform color brightness.
 
     Returns:
-        (array): image that performed color brightness.
+        np.ndarray: image that performed color brightness.
     """
     img_bright = np.zeros(image.shape).astype(image.dtype)
     alpha = 1.0 + np.random.uniform(-var, var)
     return blend(image, img_bright, alpha)
 
 
-def contrast(var, image):
+def contrast(var: float, image: np.ndarray) -> np.ndarray:
     """Perform color contrast on the given image.
 
     Args:
         var (float): variance.
-        image (array): image to perform color contrast.
+        image (np.ndarray): image to perform color contrast.
 
     Returns:
-        (array): image that performed color contrast.
+        np.ndarray: image that performed color contrast.
     """
     img_gray = grayscale(image)
     img_gray.fill(np.mean(img_gray[0]))
@@ -662,15 +666,15 @@ def contrast(var, image):
     return blend(image, img_gray, alpha)
 
 
-def saturation_list(var, images):
+def saturation_list(var: float, images: list[np.ndarray]) -> list[np.ndarray]:
     """Perform color saturation on the list of given images.
 
     Args:
         var (float): variance.
-        images (list): list of images to perform color saturation.
+        images (list[np.ndarray]): list of images to perform color saturation.
 
     Returns:
-        (list): list of images that performed color saturation.
+        list[np.ndarray]: list of images that performed color saturation.
     """
     alpha = 1.0 + np.random.uniform(-var, var)
 
@@ -681,15 +685,15 @@ def saturation_list(var, images):
     return out_images
 
 
-def brightness_list(var, images):
+def brightness_list(var: float, images: list[np.ndarray]) -> list[np.ndarray]:
     """Perform color brightness on the given list of images.
 
     Args:
         var (float): variance.
-        images (list): list of images to perform color brightness.
+        images (list[np.ndarray]): list of images to perform color brightness.
 
     Returns:
-        (array): list of images that performed color brightness.
+        list[np.ndarray]: list of images that performed color brightness.
     """
     alpha = 1.0 + np.random.uniform(-var, var)
 
@@ -700,15 +704,15 @@ def brightness_list(var, images):
     return out_images
 
 
-def contrast_list(var, images):
+def contrast_list(var: float, images: list[np.ndarray]) -> list[np.ndarray]:
     """Perform color contrast on the given list of images.
 
     Args:
         var (float): variance.
-        images (list): list of images to perform color contrast.
+        images (list[np.ndarray]): list of images to perform color contrast.
 
     Returns:
-        (array): image that performed color contrast.
+        list[np.ndarray]: list of images that performed color contrast.
     """
     alpha = 1.0 + np.random.uniform(-var, var)
 
@@ -720,17 +724,19 @@ def contrast_list(var, images):
     return out_images
 
 
-def color_jitter(image, img_brightness=0, img_contrast=0, img_saturation=0):
+def color_jitter(
+    image: np.ndarray, img_brightness: float = 0, img_contrast: float = 0, img_saturation: float = 0
+) -> np.ndarray:
     """Perform color jitter on the given image.
 
     Args:
-        image (array): image to perform color jitter.
+        image (np.ndarray): image to perform color jitter.
         img_brightness (float): jitter ratio for brightness.
         img_contrast (float): jitter ratio for contrast.
         img_saturation (float): jitter ratio for saturation.
 
     Returns:
-        image (array): the jittered image.
+        np.ndarray: the jittered image.
     """
     jitter = []
     if img_brightness != 0:

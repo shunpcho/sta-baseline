@@ -7,11 +7,12 @@ import pickle
 
 import torch
 import torch.distributed as dist
+from fvcore.common.config import CfgNode
 
 _LOCAL_PROCESS_GROUP = None
 
 
-def all_gather(tensors):
+def all_gather(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
     """All gathers the provided tensors from all processes across machines.
 
     Args:
@@ -25,12 +26,12 @@ def all_gather(tensors):
         tensor_placeholder = [torch.ones_like(tensor) for _ in range(world_size)]
         dist.all_gather(tensor_placeholder, tensor, async_op=False)
         gather_list.append(tensor_placeholder)
-    for gathered_tensor in gather_list:
-        output_tensor.append(torch.cat(gathered_tensor, dim=0))
+
+    output_tensor = [torch.cat(gathered_tensor, dim=0) for gathered_tensor in gather_list]
     return output_tensor
 
 
-def all_gather_unaligned(data, group=None):
+def all_gather_unaligned(data: object, group: object | None = None) -> list[object]:
     """Run all_gather on arbitrary picklable data (not necessarily tensors).
 
     Args:
@@ -57,7 +58,7 @@ def all_gather_unaligned(data, group=None):
     dist.all_gather(tensor_list, tensor, group=group)
 
     data_list = []
-    for size, tensor in zip(size_list, tensor_list):
+    for size, tensor in zip(size_list, tensor_list, strict=True):
         buffer = tensor.cpu().numpy().tobytes()[:size]
         data = pickle.loads(buffer)
         if isinstance(data, torch.Tensor):
@@ -69,9 +70,8 @@ def all_gather_unaligned(data, group=None):
 
 
 @functools.lru_cache
-def _get_global_gloo_group():
-    """Return a process group based on gloo backend, containing all the ranks
-    The result is cached.
+def _get_global_gloo_group() -> object:
+    """Return a process group based on gloo backend, containing all the ranks The result is cached.
 
     Returns:
         (group): pytorch dist group.
@@ -79,7 +79,7 @@ def _get_global_gloo_group():
     return dist.group.WORLD
 
 
-def init_distributed_groups(cfg):
+def init_distributed_groups(cfg: CfgNode) -> None:
     """Initialize distributed sub groups for each machine."""
     if cfg.NUM_GPUS == 1:
         return
@@ -94,9 +94,8 @@ def init_distributed_groups(cfg):
             _LOCAL_PROCESS_GROUP = pg
 
 
-def _serialize_to_tensor(data, group):
-    """Seriialize the tensor to ByteTensor. Note that only `gloo` and `nccl`
-        backend is supported.
+def _serialize_to_tensor(data: object, group: object) -> torch.ByteTensor:
+    """Seriialize the tensor to ByteTensor. Note that only `gloo` and `nccl` backend is supported.
 
     Args:
         data (data): data to be serialized.
@@ -106,7 +105,7 @@ def _serialize_to_tensor(data, group):
         tensor (ByteTensor): tensor that serialized.
     """
     backend = dist.get_backend(group)
-    assert backend in ["gloo", "nccl"]
+    assert backend in {"gloo", "nccl"}
     device = torch.device("cpu" if backend == "gloo" else "cuda")
 
     if isinstance(data, torch.Tensor):
@@ -123,7 +122,7 @@ def _serialize_to_tensor(data, group):
     return tensor
 
 
-def _pad_to_largest_tensor(tensor, group):
+def _pad_to_largest_tensor(tensor: torch.ByteTensor, group: object) -> tuple[list[int], torch.ByteTensor]:
     """Padding all the tensors from different GPUs to the largest ones.
 
     Args:
@@ -151,7 +150,7 @@ def _pad_to_largest_tensor(tensor, group):
     return size_list, tensor
 
 
-def is_master_proc():
+def is_master_proc() -> bool:
     """Determines if the current process is the master process."""
     if torch.distributed.is_initialized():
         return dist.get_rank() == 0
@@ -159,7 +158,7 @@ def is_master_proc():
         return True
 
 
-def get_world_size():
+def get_world_size() -> int:
     """Get the size of the world."""
     if not dist.is_available():
         return 1
@@ -168,7 +167,7 @@ def get_world_size():
     return dist.get_world_size()
 
 
-def get_rank():
+def get_rank() -> int:
     """Get the rank of the current process."""
     if not dist.is_available():
         return 0
@@ -178,20 +177,24 @@ def get_rank():
 
 
 def get_node_rank() -> int:
-    """Get the rank of the current process."""
+    """Get the node rank of the current process."""
     return get_rank() // get_local_size()
 
 
 def get_local_size() -> int:
-    """Returns:
-    The number of local gpus, which is required to be equivalent to the local
-    number of processes.
+    """Get the number of local GPUs.
+
+    Returns:
+        int: The number of local GPUs, which is required to be equivalent to the local
+        number of processes.
     """
     return torch.cuda.device_count()
 
 
 def get_local_rank() -> int:
-    """Returns:
-    The rank of the current process within the local (per-machine) process group.
+    """Get the local rank of the current process.
+
+    Returns:
+        int: The rank of the current process within the local (per-machine) process group.
     """
-    return int(os.environ.get("LOCAL_RANK", 0))
+    return int(os.environ.get("LOCAL_RANK", None))

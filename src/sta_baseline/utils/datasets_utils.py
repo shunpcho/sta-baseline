@@ -6,6 +6,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 import torch
+from fvcore.common.config import CfgNode
 from iopath.common.file_io import g_pathmgr
 
 from sta_baseline.utils import transform
@@ -13,7 +14,9 @@ from sta_baseline.utils import transform
 logger = logging.getLogger(__name__)
 
 
-def retry_load_images(image_paths, retry=10, backend="pytorch"):
+def retry_load_images(
+    image_paths: list[str], retry: int = 10, backend: str = "pytorch"
+) -> list[torch.Tensor] | torch.Tensor:
     """This function is to load images with support of retrying for failed load.
 
     Args:
@@ -23,6 +26,9 @@ def retry_load_images(image_paths, retry=10, backend="pytorch"):
 
     Returns:
         imgs (list): list of loaded images.
+
+    Raises:
+        FileNotFoundError: If the images cannot be loaded after retrying.
     """
     for i in range(retry):
         imgs = []
@@ -40,10 +46,13 @@ def retry_load_images(image_paths, retry=10, backend="pytorch"):
             logger.warning("Reading failed. Will retry.")
             time.sleep(1.0)
         if i == retry - 1:
-            raise Exception(f"Failed to load images {image_paths}")
+            msg = f"Failed to load images after {retry} retries. Please check the image paths."
+            raise FileNotFoundError(msg)
+
+    return imgs
 
 
-def get_sequence(center_idx, half_len, sample_rate, num_frames):
+def get_sequence(center_idx: int, half_len: int, sample_rate: int, num_frames: int) -> list[int]:
     """Sample frames among the corresponding clip.
 
     Args:
@@ -65,17 +74,20 @@ def get_sequence(center_idx, half_len, sample_rate, num_frames):
     return seq
 
 
-def pack_pathway_output(cfg, frames):
-    """Prepare output as a list of tensors. Each tensor corresponding to a
-    unique pathway.
+def pack_pathway_output(cfg: CfgNode, frames: torch.Tensor) -> list[torch.Tensor]:
+    """Prepare output as a list of tensors. Each tensor corresponding to a unique pathway.
 
     Args:
+        cfg (CfgNode): configs. Details can be found in :class:`sta_baseline.config.CfgNode`.
         frames (tensor): frames of images sampled from the video. The
             dimension is `channel` x `num frames` x `height` x `width`.
 
     Returns:
         frame_list (list): list of tensors with the dimension of
             `channel` x `num frames` x `height` x `width`.
+
+    Raises:
+        NotImplementedError: If the model architecture is not in the list of single or multi pathway
     """
     if cfg.DATA.REVERSE_INPUT_CHANNEL:
         frames = frames[..., [2, 1, 0], :, :, :]
@@ -98,18 +110,18 @@ def pack_pathway_output(cfg, frames):
 
 
 def spatial_sampling(
-    frames,
-    spatial_idx=-1,
-    min_scale=256,
-    max_scale=320,
-    crop_size=224,
-    random_horizontal_flip=True,
-    inverse_uniform_sampling=False,
-):
-    """Perform spatial sampling on the given video frames. If spatial_idx is
-    -1, perform random scale, random crop, and random flip on the given
-    frames. If spatial_idx is 0, 1, or 2, perform spatial uniform sampling
-    with the given spatial_idx.
+    frames: torch.Tensor,
+    spatial_idx: int = -1,
+    min_scale: int = 256,
+    max_scale: int = 320,
+    crop_size: int = 224,
+    random_horizontal_flip: bool = True,
+    inverse_uniform_sampling: bool = False,
+) -> torch.Tensor:
+    """Perform spatial sampling on the given video frames.
+
+    If spatial_idx is -1, perform random scale, random crop, and random flip on the given
+    frames. If spatial_idx is 0, 1, or 2, perform spatial uniform sampling with the given spatial_idx.
 
     Args:
         frames (tensor): frames of images sampled from the video. The
@@ -122,6 +134,7 @@ def spatial_sampling(
         max_scale (int): the maximal size of scaling.
         crop_size (int): the size of height and width used to crop the
             frames.
+        random_horizontal_flip (bool): if True, perform random horizontal flip with a probability of 0.5.
         inverse_uniform_sampling (bool): if True, sample uniformly in
             [1 / max_scale, 1 / min_scale] and take a reciprocal to get the
             scale. If False, take a uniform sample from [min_scale,
@@ -130,7 +143,7 @@ def spatial_sampling(
     Returns:
         frames (tensor): spatially sampled frames.
     """
-    assert spatial_idx in [-1, 0, 1, 2]
+    assert spatial_idx in {-1, 0, 1, 2}
     if spatial_idx == -1:
         frames, _ = transform.random_short_side_scale_jitter(
             images=frames,
@@ -150,7 +163,7 @@ def spatial_sampling(
     return frames
 
 
-def as_binary_vector(labels, num_classes):
+def as_binary_vector(labels: list[int], num_classes: int) -> np.ndarray:
     """Construct binary label vector given a list of label indices.
 
     Args:
@@ -167,30 +180,27 @@ def as_binary_vector(labels, num_classes):
     return label_arr
 
 
-def aggregate_labels(label_list):
+def aggregate_labels(label_list: list[list[int]]) -> list[int]:
     """Join a list of label list.
 
     Args:
-        labels (list): The input label list.
+        label_list (list[list[int]]): The input label list.
 
     Returns:
-        labels (list): The joint list of all lists in input.
+        list[int]: The joint list of all lists in input.
     """
-    all_labels = []
-    for labels in label_list:
-        for label in labels:
-            all_labels.append(label)
+    all_labels = [label for labels in label_list for label in labels]
     return list(set(all_labels))
 
 
-def convert_to_video_level_labels(labels):
+def convert_to_video_level_labels(labels: list[list[int]]) -> list[list[int]]:
     """Aggregate annotations from all frames of a video to form video-level labels.
 
     Args:
-        labels (list): The input label list.
+        labels (list[list[int]]): The input label list.
 
     Returns:
-        labels (list): Same as input, but with each label replaced by
+        list[list[int]]: Same as input, but with each label replaced by
         a video-level one.
     """
     for video_id in range(len(labels)):
@@ -200,8 +210,11 @@ def convert_to_video_level_labels(labels):
     return labels
 
 
-def load_image_lists(frame_list_file, prefix="", return_list=False):
+def load_image_lists(
+    frame_list_file: str, prefix: str = "", return_list: bool = False
+) -> tuple[list[list[str]], list[list[int]]]:
     """Load image paths and labels from a "frame list".
+
     Each line of the frame list contains:
     `original_vido_id video_id frame_id path labels`
     Args:
@@ -224,16 +237,11 @@ def load_image_lists(frame_list_file, prefix="", return_list=False):
             # original_vido_id video_id frame_id path labels
             assert len(row) == 5
             video_name = row[0]
-            if prefix == "":
-                path = row[3]
-            else:
-                path = os.path.join(prefix, row[3])
+            path = row[3] if not prefix else os.path.join(prefix, row[3])
+
             image_paths[video_name].append(path)
             frame_labels = row[-1].replace('"', "")
-            if frame_labels != "":
-                labels[video_name].append([int(x) for x in frame_labels.split(",")])
-            else:
-                labels[video_name].append([])
+            labels[video_name].append([int(x) for x in frame_labels.split(",")])
 
     if return_list:
         keys = image_paths.keys()
@@ -243,7 +251,7 @@ def load_image_lists(frame_list_file, prefix="", return_list=False):
     return dict(image_paths), dict(labels)
 
 
-def tensor_normalize(tensor, mean, std):
+def tensor_normalize(tensor: torch.Tensor, mean: torch.Tensor | list, std: torch.Tensor | list) -> torch.Tensor:
     """Normalize a given tensor by subtracting the mean and dividing the std.
 
     Args:
@@ -253,11 +261,11 @@ def tensor_normalize(tensor, mean, std):
     """
     if tensor.dtype == torch.uint8:
         tensor = tensor.float()
-        tensor = tensor / 255.0
-    if type(mean) == list:
+        tensor /= 255.0
+    if isinstance(mean, list):
         mean = torch.tensor(mean)
-    if type(std) == list:
+    if isinstance(std, list):
         std = torch.tensor(std)
-    tensor = tensor - mean
-    tensor = tensor / std
+    tensor -= mean
+    tensor /= std
     return tensor

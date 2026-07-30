@@ -193,9 +193,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
                         self.chunks.append((video_id, chunk))
                         total_frames += len(chunk)
                     else:
-                        for subchunk in np.array_split(chunk, int(np.ceil(len(chunk) / max_chunk_size))):
-                            self.chunks.append((video_id, subchunk))
-                            total_frames += len(subchunk)
+                        for sub_chunk in np.array_split(chunk, int(np.ceil(len(chunk) / max_chunk_size))):
+                            self.chunks.append((video_id, sub_chunk))
+                            total_frames += len(sub_chunk)
 
         total_frames += len(existing_keys)
 
