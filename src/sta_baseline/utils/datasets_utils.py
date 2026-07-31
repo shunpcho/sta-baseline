@@ -1,7 +1,8 @@
 import logging
-import os
 import time
 from collections import defaultdict
+from pathlib import Path
+from typing import BinaryIO, cast, TextIO
 
 import cv2
 import numpy as np
@@ -12,11 +13,14 @@ from iopath.common.file_io import g_pathmgr
 from sta_baseline.utils import transform
 
 logger = logging.getLogger(__name__)
+_FRAME_LIST_COLUMN_COUNT = 5
+type ImagePaths = dict[str, list[str]] | list[list[str]]
+type ImageLabels = dict[str, list[list[int]]] | list[list[list[int]]]
 
 
 def retry_load_images(
     image_paths: list[str], retry: int = 10, backend: str = "pytorch"
-) -> list[torch.Tensor] | torch.Tensor:
+) -> list[np.ndarray] | torch.Tensor:
     """This function is to load images with support of retrying for failed load.
 
     Args:
@@ -29,27 +33,35 @@ def retry_load_images(
 
     Raises:
         FileNotFoundError: If the images cannot be loaded after retrying.
+        RuntimeError: If image loading exits unexpectedly.
+        ValueError: If retry is less than one.
     """
-    for i in range(retry):
+    if retry < 1:
+        msg = "retry must be at least one."
+        raise ValueError(msg)
+
+    imgs: list[np.ndarray] = []
+    for attempt in range(retry):
         imgs = []
         for image_path in image_paths:
-            with g_pathmgr.open(image_path, "rb") as f:
+            with cast("BinaryIO", g_pathmgr.open(image_path, "rb")) as f:
                 img_str = np.frombuffer(f.read(), np.uint8)
-                img = cv2.imdecode(img_str, flags=cv2.IMREAD_COLOR)
-            imgs.append(img)
+                img = cast("np.ndarray | None", cv2.imdecode(img_str, flags=cv2.IMREAD_COLOR))
+            if img is not None:
+                imgs.append(img)
 
-        if all(img is not None for img in imgs):
+        if len(imgs) == len(image_paths):
             if backend == "pytorch":
-                imgs = torch.as_tensor(np.stack(imgs))
+                return torch.as_tensor(np.stack(imgs))
             return imgs
-        else:
-            logger.warning("Reading failed. Will retry.")
-            time.sleep(1.0)
-        if i == retry - 1:
+        logger.warning("Reading failed. Will retry.")
+        if attempt == retry - 1:
             msg = f"Failed to load images after {retry} retries. Please check the image paths."
             raise FileNotFoundError(msg)
+        time.sleep(1.0)
 
-    return imgs
+    msg = "Image loading exited unexpectedly."
+    raise RuntimeError(msg)
 
 
 def get_sequence(center_idx: int, half_len: int, sample_rate: int, num_frames: int) -> list[int]:
@@ -95,11 +107,12 @@ def pack_pathway_output(cfg: CfgNode, frames: torch.Tensor) -> list[torch.Tensor
         frame_list = [frames]
     elif cfg.MODEL.ARCH in cfg.MODEL.MULTI_PATHWAY_ARCH:
         fast_pathway = frames
+        alpha = cast("int", cfg.SLOWFAST.ALPHA)
         # Perform temporal sampling from the fast pathway.
         slow_pathway = torch.index_select(
             frames,
             -3,
-            torch.linspace(0, frames.shape[-3] - 1, frames.shape[-3] // cfg.SLOWFAST.ALPHA).long(),
+            torch.linspace(0, frames.shape[-3] - 1, frames.shape[-3] // alpha).long(),
         )
         frame_list = [slow_pathway, fast_pathway]
     else:
@@ -193,7 +206,7 @@ def aggregate_labels(label_list: list[list[int]]) -> list[int]:
     return list(set(all_labels))
 
 
-def convert_to_video_level_labels(labels: list[list[int]]) -> list[list[int]]:
+def convert_to_video_level_labels(labels: list[list[list[int]]]) -> list[list[list[int]]]:
     """Aggregate annotations from all frames of a video to form video-level labels.
 
     Args:
@@ -212,7 +225,7 @@ def convert_to_video_level_labels(labels: list[list[int]]) -> list[list[int]]:
 
 def load_image_lists(
     frame_list_file: str, prefix: str = "", return_list: bool = False
-) -> tuple[list[list[str]], list[list[int]]]:
+) -> tuple[ImagePaths, ImageLabels]:
     """Load image paths and labels from a "frame list".
 
     Each line of the frame list contains:
@@ -228,16 +241,16 @@ def load_image_lists(
         labels (list or dict): list of list containing label of each frame.
             If return_list is False, then return in a dict form.
     """
-    image_paths = defaultdict(list)
-    labels = defaultdict(list)
-    with g_pathmgr.open(frame_list_file, "r") as f:
+    image_paths: defaultdict[str, list[str]] = defaultdict(list)
+    labels: defaultdict[str, list[list[int]]] = defaultdict(list)
+    with cast("TextIO", g_pathmgr.open(frame_list_file, "r")) as f:
         assert f.readline().startswith("original_vido_id")
         for line in f:
             row = line.split()
             # original_vido_id video_id frame_id path labels
-            assert len(row) == 5
+            assert len(row) == _FRAME_LIST_COLUMN_COUNT
             video_name = row[0]
-            path = row[3] if not prefix else os.path.join(prefix, row[3])
+            path = row[3] if not prefix else str(Path(prefix) / row[3])
 
             image_paths[video_name].append(path)
             frame_labels = row[-1].replace('"', "")
@@ -245,13 +258,13 @@ def load_image_lists(
 
     if return_list:
         keys = image_paths.keys()
-        image_paths = [image_paths[key] for key in keys]
-        labels = [labels[key] for key in keys]
-        return image_paths, labels
+        return [image_paths[key] for key in keys], [labels[key] for key in keys]
     return dict(image_paths), dict(labels)
 
 
-def tensor_normalize(tensor: torch.Tensor, mean: torch.Tensor | list, std: torch.Tensor | list) -> torch.Tensor:
+def tensor_normalize(
+    tensor: torch.Tensor, mean: torch.Tensor | list[float], std: torch.Tensor | list[float]
+) -> torch.Tensor:
     """Normalize a given tensor by subtracting the mean and dividing the std.
 
     Args:

@@ -24,7 +24,7 @@ def setup_logging(output_dir: str | None = None) -> None:
         "[%(asctime)s][%(levelname)s] %(name)s: %(lineno)4d: %(message)s",
         datefmt="%m/%d %H:%M:%S",
     )
-    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+    if int(os.environ.get("LOCAL_RANK", "0")) == 0:
         ch = logging.StreamHandler(stream=sys.stdout)
         ch.setLevel(logging.DEBUG)
         ch.setFormatter(plain_formatter)

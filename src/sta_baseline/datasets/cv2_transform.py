@@ -3,6 +3,9 @@ import math
 import cv2
 import numpy as np
 
+_LAST_SPATIAL_CROP_INDEX = 2
+_RANDOM_FLIP_PROBABILITY = 0.5
+
 
 def clip_boxes_to_image(boxes: np.ndarray, height: int, width: int) -> np.ndarray:
     """Clip the boxes with the height and width of the image size.
@@ -84,9 +87,9 @@ def scale(size: int, image: np.ndarray) -> np.ndarray:
     new_width = size
     new_height = size
     if width < height:
-        new_height = int(math.floor((float(height) / width) * size))
+        new_height = math.floor((float(height) / width) * size)
     else:
-        new_width = int(math.floor((float(width) / height) * size))
+        new_width = math.floor((float(width) / height) * size)
     img = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
     return img.astype(np.float32)
 
@@ -172,6 +175,7 @@ def spatial_shift_crop_list(
             `height` x `width` x `channel`.
         boxes (list): optional. Corresponding boxes to images. Dimension is
             `num boxes` x 4.
+
     """
     assert spatial_shift_pos in {0, 1, 2}
 
@@ -183,11 +187,11 @@ def spatial_shift_crop_list(
     if height > width:
         if spatial_shift_pos == 0:
             y_offset = 0
-        elif spatial_shift_pos == 2:
+        elif spatial_shift_pos == _LAST_SPATIAL_CROP_INDEX:
             y_offset = height - size
     elif spatial_shift_pos == 0:
         x_offset = 0
-    elif spatial_shift_pos == 2:
+    elif spatial_shift_pos == _LAST_SPATIAL_CROP_INDEX:
         x_offset = width - size
 
     cropped = [image[y_offset : y_offset + size, x_offset : x_offset + size, :] for image in images]
@@ -201,7 +205,7 @@ def spatial_shift_crop_list(
     return cropped, boxes
 
 
-def CHW2HWC(image: np.ndarray) -> np.ndarray:
+def chw_to_hwc(image: np.ndarray) -> np.ndarray:
     """Transpose the dimension from `channel` x `height` x `width` to `height` x `width` x `channel`.
 
     Args:
@@ -213,7 +217,7 @@ def CHW2HWC(image: np.ndarray) -> np.ndarray:
     return image.transpose([1, 2, 0])
 
 
-def HWC2CHW(image: np.ndarray) -> np.ndarray:
+def hwc_to_chw(image: np.ndarray) -> np.ndarray:
     """Transpose the dimension from `height` x `width` x `channel` to `channel` x `height` x `width`.
 
     Args:
@@ -273,6 +277,7 @@ def lighting_list(
         alphastd (float): jitter ratio for PCA jitter.
         eigval (list): eigenvalues for PCA jitter.
         eigvec (list[list]): eigenvectors for PCA jitter.
+        alpha (np.ndarray | None): optional precomputed noise vector.
 
     Returns:
         out_images (list): the list of jittered images.
@@ -280,7 +285,8 @@ def lighting_list(
     if alphastd == 0:
         return imgs
     # generate alpha1, alpha2, alpha3
-    alpha = np.random.normal(0, alphastd, size=(1, 3))
+    if alpha is None:
+        alpha = np.random.normal(0, alphastd, size=(1, 3))
     eig_vec = np.array(eigvec)
     eig_val = np.reshape(eigval, (1, 3))
     rgb = np.sum(eig_vec * np.repeat(alpha, 3, axis=0) * np.repeat(eig_val, 3, axis=0), axis=1)
@@ -386,6 +392,21 @@ def crop_boxes(boxes: np.ndarray, x_offset: int, y_offset: int) -> np.ndarray:
     return boxes
 
 
+def _random_crop_offsets(image: np.ndarray, size: int, order: str) -> tuple[int, int]:
+    height_axis, width_axis = (1, 2) if order == "CHW" else (0, 1)
+    height = image.shape[height_axis]
+    width = image.shape[width_axis]
+    y_offset = int(np.random.randint(0, height - size)) if height > size else 0
+    x_offset = int(np.random.randint(0, width - size)) if width > size else 0
+    return y_offset, x_offset
+
+
+def _crop_images(images: list[np.ndarray], size: int, order: str, y_offset: int, x_offset: int) -> list[np.ndarray]:
+    if order == "CHW":
+        return [image[:, y_offset : y_offset + size, x_offset : x_offset + size] for image in images]
+    return [image[y_offset : y_offset + size, x_offset : x_offset + size, :] for image in images]
+
+
 def random_crop_list(
     images: list[np.ndarray], size: int, pad_size: int = 0, order: str = "CHW", boxes: list[np.ndarray] | None = None
 ) -> tuple[list[np.ndarray], list[np.ndarray] | None]:
@@ -404,40 +425,23 @@ def random_crop_list(
             `height` x `width` x `channel`.
         boxes (list): optional. Corresponding boxes to images. Dimension is
             `num boxes` x 4.
+
+    Raises:
+        ValueError: If order is neither `CHW` nor `HWC`.
     """
     # explicitly dealing processing per image order to avoid flipping images.
     if pad_size > 0:
         images = [pad_image(pad_size=pad_size, image=image, order=order) for image in images]
 
-    # image format should be CHW.
-    if order == "CHW":
-        if images[0].shape[1] == size and images[0].shape[2] == size:
-            return images, boxes
-        height = images[0].shape[1]
-        width = images[0].shape[2]
-        y_offset = 0
-        if height > size:
-            y_offset = int(np.random.randint(0, height - size))
-        x_offset = 0
-        if width > size:
-            x_offset = int(np.random.randint(0, width - size))
-        cropped = [image[:, y_offset : y_offset + size, x_offset : x_offset + size] for image in images]
-        assert cropped[0].shape[1] == size, "Image not cropped properly"
-        assert cropped[0].shape[2] == size, "Image not cropped properly"
-    elif order == "HWC":
-        if images[0].shape[0] == size and images[0].shape[1] == size:
-            return images, boxes
-        height = images[0].shape[0]
-        width = images[0].shape[1]
-        y_offset = 0
-        if height > size:
-            y_offset = int(np.random.randint(0, height - size))
-        x_offset = 0
-        if width > size:
-            x_offset = int(np.random.randint(0, width - size))
-        cropped = [image[y_offset : y_offset + size, x_offset : x_offset + size, :] for image in images]
-        assert cropped[0].shape[0] == size, "Image not cropped properly"
-        assert cropped[0].shape[1] == size, "Image not cropped properly"
+    if order not in {"CHW", "HWC"}:
+        msg = f"Unknown image order: {order}"
+        raise ValueError(msg)
+
+    y_offset, x_offset = _random_crop_offsets(images[0], size, order)
+    cropped = _crop_images(images, size, order, y_offset, x_offset)
+    height_axis, width_axis = (1, 2) if order == "CHW" else (0, 1)
+    assert cropped[0].shape[height_axis] == size, "Image height not cropped properly"
+    assert cropped[0].shape[width_axis] == size, "Image width not cropped properly"
 
     if boxes is not None:
         boxes = [crop_boxes(proposal, x_offset, y_offset) for proposal in boxes]
@@ -483,7 +487,7 @@ def random_scale_jitter(image: np.ndarray, min_size: int, max_size: int) -> np.n
 
 
 def random_scale_jitter_list(images: list[np.ndarray], min_size: int, max_size: int) -> list[np.ndarray]:
-    """Perform ResNet style random scale jittering on a list of image: randomly select the scale from [1/max_size, 1/min_size].
+    """Perform ResNet style random scale jittering on a list of images.
 
     Note that all the image will share the same scale.
 
@@ -500,7 +504,7 @@ def random_scale_jitter_list(images: list[np.ndarray], min_size: int, max_size: 
 
 
 def random_sized_crop(image: np.ndarray, size: int, area_frac: float = 0.08) -> np.ndarray:
-    """Perform random sized cropping on the given image. Random crop with size 8% - 100% image area and aspect ratio in [3/4, 4/3].
+    """Perform random sized cropping with bounded area and aspect ratio.
 
     Args:
         image (np.ndarray): image to crop.
@@ -518,7 +522,7 @@ def random_sized_crop(image: np.ndarray, size: int, area_frac: float = 0.08) -> 
         aspect_ratio = np.random.uniform(3.0 / 4.0, 4.0 / 3.0)
         w = round(math.sqrt(float(target_area) * aspect_ratio))
         h = round(math.sqrt(float(target_area) / aspect_ratio))
-        if np.random.uniform() < 0.5:
+        if np.random.uniform() < _RANDOM_FLIP_PROBABILITY:
             w, h = h, w
         if h <= height and w <= width:
             y_offset = 0 if height == h else np.random.randint(0, height - h)
@@ -558,7 +562,7 @@ def lighting(img: np.ndarray, alphastd: float, eigval: np.ndarray, eigvec: np.nd
 
 
 def random_sized_crop_list(images: list[np.ndarray], size: int, crop_area_fraction: float = 0.08) -> list[np.ndarray]:
-    """Perform random sized cropping on the given list of images. Random crop with size 8% - 100% image area and aspect ratio in [3/4, 4/3].
+    """Perform random sized cropping on a list of images.
 
     Args:
         images (list[np.ndarray]): list of images to crop.
@@ -576,7 +580,7 @@ def random_sized_crop_list(images: list[np.ndarray], size: int, crop_area_fracti
         aspect_ratio = np.random.uniform(3.0 / 4.0, 4.0 / 3.0)
         w = round(math.sqrt(float(target_area) * aspect_ratio))
         h = round(math.sqrt(float(target_area) / aspect_ratio))
-        if np.random.uniform() < 0.5:
+        if np.random.uniform() < _RANDOM_FLIP_PROBABILITY:
             w, h = h, w
         if h <= height and w <= width:
             y_offset = 0 if height == h else np.random.randint(0, height - h)
@@ -597,7 +601,7 @@ def random_sized_crop_list(images: list[np.ndarray], size: int, crop_area_fracti
     return [center_crop(size, scale(size, image)) for image in images]
 
 
-def blend(image1, image2, alpha):
+def blend(image1: np.ndarray, image2: np.ndarray, alpha: float) -> np.ndarray:
     return image1 * alpha + image2 * (1 - alpha)
 
 

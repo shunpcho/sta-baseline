@@ -1,4 +1,8 @@
+from typing import Any
+
+from fvcore.common.config import CfgNode
 from pytorch_lightning.core import LightningModule
+from torch.utils.data import DataLoader
 
 from sta_baseline.datasets import loader
 from sta_baseline.models import losses
@@ -11,7 +15,7 @@ logger = logging.get_logger(__name__)
 
 
 class VideoTask(LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg: CfgNode) -> None:
         super().__init__()
 
         # Backwards compatibility.
@@ -53,7 +57,7 @@ class VideoTask(LightningModule):
     # ---------------------
     # TRAINING SETUP
     # ---------------------
-    def setup(self, stage):
+    def setup(self, stage: str | None = None) -> None:  # noqa: ARG002
         # Setup is called immediately after the distributed processes have been
         # registered. We can now setup the distributed process groups for each machine
         # and create the distributed data loaders.
@@ -61,24 +65,24 @@ class VideoTask(LightningModule):
         if self.cfg.SOLVER.ACCELERATOR != "dp":
             du.init_distributed_groups(self.cfg)
 
-        self.train_loader = loader.construct_loader(self.cfg, "train")
-        self.val_loader = loader.construct_loader(self.cfg, "val")
-        self.test_loader = loader.construct_loader(self.cfg, "test")
+        self.train_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "train")
+        self.val_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "val")
+        self.test_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "test")
 
     def configure_optimizers(self):
         steps_in_epoch = len(self.train_loader)
         return lr_scheduler.lr_factory(self.model, self.cfg, steps_in_epoch, self.cfg.SOLVER.LR_POLICY)
 
-    def train_dataloader(self):
+    def train_dataloader(self) -> DataLoader[Any]:
         return self.train_loader
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader[Any]:
         return self.val_loader
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader[Any]:
         return self.test_loader
 
-    def on_after_backward(self):
+    def on_after_backward(self) -> None:
         if self.cfg.LOG_GRADIENT_PERIOD >= 0 and self.trainer.global_step % self.cfg.LOG_GRADIENT_PERIOD == 0:
             for name, weight in self.model.named_parameters():
                 if weight is not None:

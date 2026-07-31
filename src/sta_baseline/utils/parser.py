@@ -6,20 +6,13 @@
 import argparse
 import sys
 
+from fvcore.common.config import CfgNode
+
 from sta_baseline.config.defaults import get_cfg
 
 
-def parse_args():
-    """Parse the following arguments for a default parser for PySlowFast users.
-
-    Args:
-        shard_id (int): shard id for the current machine. Starts from 0 to
-            num_shards - 1. If single machine is used, then set shard id to 0.
-        num_shards (int): number of shards using by the job.
-        cfg (str): path to the config file.
-        opts (argument): provide additional options from the command line, it
-            overwrites the config loaded from file.
-    """
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the SlowFast training pipeline."""
     parser = argparse.ArgumentParser(description="Provide SlowFast video training and testing pipeline.")
     parser.add_argument("--job_name", default="", type=str)
     parser.add_argument("--on_cluster", default=False, action="store_true")
@@ -50,7 +43,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_config(args):
+def load_config(args: argparse.Namespace) -> CfgNode:
     """Given the arguemnts, load and initialize the configs.
 
     Args:

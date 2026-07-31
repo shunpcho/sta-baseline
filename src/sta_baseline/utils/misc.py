@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
-import os
+import subprocess
+from collections.abc import Iterable, Iterator
+from typing import cast
 
 import numpy as np
 import psutil
 import torch
+from fvcore.common.config import CfgNode
 from fvcore.nn.flop_count import flop_count
 from fvcore.nn.precise_bn import update_bn_stats
 
@@ -16,22 +19,22 @@ from sta_baseline.utils.datasets_utils import pack_pathway_output
 logger = logging.get_logger(__name__)
 
 
-def params_count(model):
+def params_count(model: torch.nn.Module) -> int:
     """Compute the number of parameters.
 
     Args:
         model (model): model to count the number of parameters.
     """
-    return np.sum([p.numel() for p in model.parameters()]).item()
+    return int(np.sum([p.numel() for p in model.parameters()]))
 
 
-def gpu_mem_usage():
+def gpu_mem_usage() -> float:
     """Compute the GPU memory usage for the current device (GB)."""
     mem_usage_bytes = torch.cuda.max_memory_allocated()
     return mem_usage_bytes / 1024**3
 
 
-def cpu_mem_usage():
+def cpu_mem_usage() -> tuple[float, float]:
     """Compute the system memory (RAM) usage for the current device (GB).
 
     Returns:
@@ -45,7 +48,7 @@ def cpu_mem_usage():
     return usage, total
 
 
-def get_flop_stats(model, cfg, is_train):
+def get_flop_stats(model: torch.nn.Module, cfg: CfgNode, is_train: bool) -> float:
     """Compute the gflops for the current model given the config.
 
     Args:
@@ -59,19 +62,21 @@ def get_flop_stats(model, cfg, is_train):
         float: the total number of gflops of the given model.
     """
     rgb_dimension = 3
+    num_frames = cast("int", cfg.DATA.NUM_FRAMES)
+    crop_size = cast("int", cfg.DATA.TRAIN_CROP_SIZE if is_train else cfg.DATA.TEST_CROP_SIZE)
     if is_train:
         input_tensors = torch.rand(
             rgb_dimension,
-            cfg.DATA.NUM_FRAMES,
-            cfg.DATA.TRAIN_CROP_SIZE,
-            cfg.DATA.TRAIN_CROP_SIZE,
+            num_frames,
+            crop_size,
+            crop_size,
         )
     else:
         input_tensors = torch.rand(
             rgb_dimension,
-            cfg.DATA.NUM_FRAMES,
-            cfg.DATA.TEST_CROP_SIZE,
-            cfg.DATA.TEST_CROP_SIZE,
+            num_frames,
+            crop_size,
+            crop_size,
         )
     flop_inputs = pack_pathway_output(cfg, input_tensors)
     for i in range(len(flop_inputs)):
@@ -90,7 +95,7 @@ def get_flop_stats(model, cfg, is_train):
     return gflops
 
 
-def log_model_info(model, cfg, is_train=True):
+def log_model_info(model: torch.nn.Module, cfg: CfgNode, is_train: bool = True) -> None:
     """Log info, includes number of parameters, gpu usage and gflops.
 
     Args:
@@ -105,14 +110,14 @@ def log_model_info(model, cfg, is_train=True):
     logger.info(f"Mem: {gpu_mem_usage():,} MB")
     logger.info(f"FLOPs: {get_flop_stats(model, cfg, is_train):,} GFLOPs")
     logger.info("nvidia-smi")
-    os.system("nvidia-smi")
+    subprocess.run(["nvidia-smi"], check=False)
 
 
-def aggregate_split_bn_stats(module):
+def aggregate_split_bn_stats(module: torch.nn.Module) -> int:
     """Recursively find all SubBN modules and aggregate sub-BN stats.
 
     Args:
-        module (nn.Module)
+        module (torch.nn.Module): module to inspect recursively.
 
     Returns:
         count (int): number of SubBN module found.
@@ -127,7 +132,11 @@ def aggregate_split_bn_stats(module):
     return count
 
 
-def calculate_and_update_precise_bn(loader, model, num_iters=200):
+def calculate_and_update_precise_bn(
+    loader: Iterable[tuple[torch.Tensor | list[torch.Tensor], ...]],
+    model: torch.nn.Module,
+    num_iters: int = 200,
+) -> None:
     """Update the stats in bn layers by calculate the precise stats.
 
     Args:
@@ -136,7 +145,7 @@ def calculate_and_update_precise_bn(loader, model, num_iters=200):
         num_iters (int): number of iterations to compute and update the bn stats.
     """
 
-    def _gen_loader():
+    def _gen_loader() -> Iterator[torch.Tensor | list[torch.Tensor]]:
         for inputs, *_ in loader:
             if isinstance(inputs, (list,)):
                 for i in range(len(inputs)):

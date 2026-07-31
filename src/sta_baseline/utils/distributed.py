@@ -4,12 +4,13 @@ import functools
 import logging
 import os
 import pickle
+from typing import cast
 
 import torch
 import torch.distributed as dist
 from fvcore.common.config import CfgNode
 
-_LOCAL_PROCESS_GROUP = None
+_LOCAL_PROCESS_GROUP: dist.ProcessGroup | None = None
 
 
 def all_gather(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
@@ -19,19 +20,17 @@ def all_gather(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
         tensors (list): tensors to perform all gather across all processes in
         all machines.
     """
-    gather_list = []
-    output_tensor = []
+    gather_list: list[list[torch.Tensor]] = []
     world_size = dist.get_world_size()
     for tensor in tensors:
         tensor_placeholder = [torch.ones_like(tensor) for _ in range(world_size)]
         dist.all_gather(tensor_placeholder, tensor, async_op=False)
         gather_list.append(tensor_placeholder)
 
-    output_tensor = [torch.cat(gathered_tensor, dim=0) for gathered_tensor in gather_list]
-    return output_tensor
+    return [torch.cat(gathered_tensor, dim=0) for gathered_tensor in gather_list]
 
 
-def all_gather_unaligned(data: object, group: object | None = None) -> list[object]:
+def all_gather_unaligned(data: object, group: dist.ProcessGroup | None = None) -> list[object]:
     """Run all_gather on arbitrary picklable data (not necessarily tensors).
 
     Args:
@@ -57,7 +56,7 @@ def all_gather_unaligned(data: object, group: object | None = None) -> list[obje
     tensor_list = [torch.empty((max_size,), dtype=torch.uint8, device=tensor.device) for _ in size_list]
     dist.all_gather(tensor_list, tensor, group=group)
 
-    data_list = []
+    data_list: list[object] = []
     for size, tensor in zip(size_list, tensor_list, strict=True):
         buffer = tensor.cpu().numpy().tobytes()[:size]
         data = pickle.loads(buffer)
@@ -70,13 +69,13 @@ def all_gather_unaligned(data: object, group: object | None = None) -> list[obje
 
 
 @functools.lru_cache
-def _get_global_gloo_group() -> object:
+def _get_global_gloo_group() -> dist.ProcessGroup:
     """Return a process group based on gloo backend, containing all the ranks The result is cached.
 
     Returns:
         (group): pytorch dist group.
     """
-    return dist.group.WORLD
+    return cast("dist.ProcessGroup", dist.group.WORLD)
 
 
 def init_distributed_groups(cfg: CfgNode) -> None:
@@ -84,17 +83,29 @@ def init_distributed_groups(cfg: CfgNode) -> None:
     if cfg.NUM_GPUS == 1:
         return
 
-    num_gpus_per_machine = cfg.NUM_GPUS
+    num_gpus_per_machine = cast("int", cfg.NUM_GPUS)
     num_machines = dist.get_world_size() // num_gpus_per_machine
     for i in range(num_machines):
         ranks_on_i = list(range(i * num_gpus_per_machine, (i + 1) * num_gpus_per_machine))
-        pg = dist.new_group(ranks_on_i)
+        pg = cast("dist.ProcessGroup", dist.new_group(ranks_on_i))
         if i == get_node_rank():
-            global _LOCAL_PROCESS_GROUP
-            _LOCAL_PROCESS_GROUP = pg
+            global _LOCAL_PROCESS_GROUP  # noqa: PLW0603
+            _LOCAL_PROCESS_GROUP = pg  # pyright: ignore[reportConstantRedefinition]
 
 
-def _serialize_to_tensor(data: object, group: object) -> torch.ByteTensor:
+def get_local_process_group() -> dist.ProcessGroup:
+    """Return the process group for the current machine.
+
+    Raises:
+        RuntimeError: If the local process group has not been initialized.
+    """
+    if _LOCAL_PROCESS_GROUP is None:
+        msg = "Local process group has not been initialized."
+        raise RuntimeError(msg)
+    return _LOCAL_PROCESS_GROUP
+
+
+def _serialize_to_tensor(data: object, group: dist.ProcessGroup) -> torch.Tensor:
     """Seriialize the tensor to ByteTensor. Note that only `gloo` and `nccl` backend is supported.
 
     Args:
@@ -122,7 +133,7 @@ def _serialize_to_tensor(data: object, group: object) -> torch.ByteTensor:
     return tensor
 
 
-def _pad_to_largest_tensor(tensor: torch.ByteTensor, group: object) -> tuple[list[int], torch.ByteTensor]:
+def _pad_to_largest_tensor(tensor: torch.Tensor, group: dist.ProcessGroup) -> tuple[list[int], torch.Tensor]:
     """Padding all the tensors from different GPUs to the largest ones.
 
     Args:
@@ -135,12 +146,13 @@ def _pad_to_largest_tensor(tensor: torch.ByteTensor, group: object) -> tuple[lis
     """
     world_size = dist.get_world_size(group=group)
     assert world_size >= 1, "comm.gather/all_gather must be called from ranks within the given group!"
-    local_size = torch.tensor([tensor.numel()], dtype=torch.int64, device=tensor.device)
+    local_size_tensor = torch.tensor([tensor.numel()], dtype=torch.int64, device=tensor.device)
     size_list = [torch.zeros([1], dtype=torch.int64, device=tensor.device) for _ in range(world_size)]
-    dist.all_gather(size_list, local_size, group=group)
+    dist.all_gather(size_list, local_size_tensor, group=group)
     size_list = [int(size.item()) for size in size_list]
 
     max_size = max(size_list)
+    local_size = tensor.numel()
 
     # we pad the tensor because torch all_gather does not support
     # gathering tensors of different shapes
@@ -197,4 +209,4 @@ def get_local_rank() -> int:
     Returns:
         int: The rank of the current process within the local (per-machine) process group.
     """
-    return int(os.environ.get("LOCAL_RANK", None))
+    return int(os.environ.get("LOCAL_RANK", "0"))

@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
-"""BatchNorm (BN) utility functions and custom batch-size BN implementations"""
+"""BatchNorm (BN) utility functions and custom batch-size BN implementations."""
 
 from functools import partial
+from typing import Any
 
 import torch
 import torch.distributed as dist
+from fvcore.common.config import CfgNode
 from torch import nn
 from torch.autograd.function import Function
 
 from sta_baseline.utils import distributed as du
 
 
-def get_norm(cfg):
-    """Args:
+def get_norm(cfg: CfgNode) -> type[nn.BatchNorm3d] | partial[Any]:
+    """Get the configured normalization layer.
+
+    Args:
         cfg (CfgNode): model building configs, details are in the comments of
             the config file.
 
@@ -28,11 +32,14 @@ def get_norm(cfg):
     elif cfg.BN.NORM_TYPE == "sync_batchnorm":
         return partial(NaiveSyncBatchNorm3d, num_sync_devices=cfg.BN.NUM_SYNC_DEVICES)
     else:
-        raise NotImplementedError(f"Norm type {cfg.BN.NORM_TYPE} is not supported")
+        msg = f"Norm type {cfg.BN.NORM_TYPE} is not supported"
+        raise NotImplementedError(msg)
 
 
 class SubBatchNorm3d(nn.Module):
-    """The standard BN layer computes stats across all examples in a GPU. In some
+    """The standard BN layer computes stats across all examples in a GPU.
+
+    In some
     cases it is desirable to compute stats across only a subset of examples
     (e.g., in multigrid training https://arxiv.org/abs/1912.00998).
     SubBatchNorm3d splits the batch dimension into N splits, and run BN on
@@ -41,10 +48,12 @@ class SubBatchNorm3d(nn.Module):
     the stats from all splits into one BN.
     """
 
-    def __init__(self, num_splits, **args):
-        """Args:
-        num_splits (int): number of splits.
-        args (list): other arguments.
+    def __init__(self, num_splits: int, **args: Any) -> None:  # noqa: ANN401
+        """Initialize the split BatchNorm layer.
+
+        Args:
+            num_splits (int): number of splits.
+            args: BatchNorm keyword arguments.
         """
         super().__init__()
         self.num_splits = num_splits
@@ -61,7 +70,9 @@ class SubBatchNorm3d(nn.Module):
         args["num_features"] = num_features * num_splits
         self.split_bn = nn.BatchNorm3d(**args)
 
-    def _get_aggregated_mean_std(self, means, stds, n):
+    def _get_aggregated_mean_std(
+        self, means: torch.Tensor, stds: torch.Tensor, n: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculate the aggregated mean and stds.
 
         Args:
@@ -73,15 +84,22 @@ class SubBatchNorm3d(nn.Module):
         std = stds.view(n, -1).sum(0) / n + ((means.view(n, -1) - mean) ** 2).view(n, -1).sum(0) / n
         return mean.detach(), std.detach()
 
-    def aggregate_stats(self):
+    def aggregate_stats(self) -> None:
         """Synchronize running_mean, and running_var. Call this before eval."""
         if self.split_bn.track_running_stats:
-            (
-                self.bn.running_mean.data,
-                self.bn.running_var.data,
-            ) = self._get_aggregated_mean_std(self.split_bn.running_mean, self.split_bn.running_var, self.num_splits)
+            running_mean = self.bn.running_mean
+            running_var = self.bn.running_var
+            split_running_mean = self.split_bn.running_mean
+            split_running_var = self.split_bn.running_var
+            assert running_mean is not None
+            assert running_var is not None
+            assert split_running_mean is not None
+            assert split_running_var is not None
+            running_mean.data, running_var.data = self._get_aggregated_mean_std(
+                split_running_mean, split_running_var, self.num_splits
+            )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.training:
             n, c, t, h, w = x.shape
             x = x.view(n // self.num_splits, c * self.num_splits, t, h, w)
@@ -90,8 +108,8 @@ class SubBatchNorm3d(nn.Module):
         else:
             x = self.bn(x)
         if self.affine:
-            x = x * self.weight.view((-1, 1, 1, 1))
-            x = x + self.bias.view((-1, 1, 1, 1))
+            x *= self.weight.view((-1, 1, 1, 1))
+            x += self.bias.view((-1, 1, 1, 1))
         return x
 
 
@@ -99,15 +117,18 @@ class GroupGather(Function):
     """GroupGather performs all gather on each of the local process/ GPU groups."""
 
     @staticmethod
-    def forward(ctx, input, num_sync_devices, num_groups):
-        """Perform forwarding, gathering the stats across different process/ GPU
-        group.
-        """
+    def forward(
+        ctx: Any,  # noqa: ANN401
+        tensor: torch.Tensor,
+        num_sync_devices: int,
+        num_groups: int,
+    ) -> torch.Tensor:
+        """Perform forwarding, gathering the stats across different process/GPU groups."""
         ctx.num_sync_devices = num_sync_devices
         ctx.num_groups = num_groups
 
-        input_list = [torch.zeros_like(input) for k in range(du.get_local_size())]
-        dist.all_gather(input_list, input, async_op=False, group=du._LOCAL_PROCESS_GROUP)
+        input_list = [torch.zeros_like(tensor) for _ in range(du.get_local_size())]
+        dist.all_gather(input_list, tensor, async_op=False, group=du.get_local_process_group())
 
         inputs = torch.stack(input_list, dim=0)
         if num_groups > 1:
@@ -118,12 +139,13 @@ class GroupGather(Function):
         return inputs
 
     @staticmethod
-    def backward(ctx, grad_output):
-        """Perform backwarding, gathering the gradients across different process/ GPU
-        group.
-        """
-        grad_output_list = [torch.zeros_like(grad_output) for k in range(du.get_local_size())]
-        dist.all_gather(grad_output_list, grad_output, async_op=False, group=du._LOCAL_PROCESS_GROUP)
+    def backward(  # pyright: ignore[reportIncompatibleMethodOverride]
+        ctx: Any,  # noqa: ANN401
+        grad_output: torch.Tensor,
+    ) -> tuple[torch.Tensor, None, None]:
+        """Perform backwarding, gathering gradients across different process/GPU groups."""
+        grad_output_list = [torch.zeros_like(grad_output) for _ in range(du.get_local_size())]
+        dist.all_gather(grad_output_list, grad_output, async_op=False, group=du.get_local_process_group())
 
         grads = torch.stack(grad_output_list, dim=0)
         if ctx.num_groups > 1:
@@ -135,7 +157,7 @@ class GroupGather(Function):
 
 
 class NaiveSyncBatchNorm3d(nn.BatchNorm3d):
-    def __init__(self, num_sync_devices, **args):
+    def __init__(self, num_sync_devices: int, **args: Any) -> None:  # noqa: ANN401
         """Naive version of Synchronized 3D BatchNorm.
 
         Args:
@@ -145,33 +167,44 @@ class NaiveSyncBatchNorm3d(nn.BatchNorm3d):
         self.num_sync_devices = num_sync_devices
         super().__init__(**args)
 
-    def _get_num_groups(self):
+    def _get_num_groups(self) -> int:
         num_groups = 1
         if self.num_sync_devices > 0:
             num_groups = du.get_local_size() // self.num_sync_devices
 
         return num_groups
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # noqa: A002
         if du.get_local_size() == 1 or not self.training:
             return super().forward(input)
 
         assert input.shape[0] > 0, "SyncBatchNorm does not support empty inputs"
-        C = input.shape[1]
+        channels = input.shape[1]
         mean = torch.mean(input, dim=[0, 2, 3, 4])
         meansqr = torch.mean(input * input, dim=[0, 2, 3, 4])
 
         vec = torch.cat([mean, meansqr], dim=0)
-        vec = GroupGather.apply(vec, self.num_sync_devices, self._get_num_groups()) * (1.0 / self.num_sync_devices)
+        vec = torch.as_tensor(GroupGather.apply(vec, self.num_sync_devices, self._get_num_groups()))
+        vec *= 1.0 / self.num_sync_devices
 
-        mean, meansqr = torch.split(vec, C)
+        mean, meansqr = torch.split(vec, channels)
         var = meansqr - mean * mean
-        self.running_mean += self.momentum * (mean.detach() - self.running_mean)
-        self.running_var += self.momentum * (var.detach() - self.running_var)
+        running_mean = self.running_mean
+        running_var = self.running_var
+        momentum = self.momentum
+        assert running_mean is not None
+        assert running_var is not None
+        assert momentum is not None
+        running_mean += momentum * (mean.detach() - running_mean)
+        running_var += momentum * (var.detach() - running_var)
 
         invstd = torch.rsqrt(var + self.eps)
-        scale = self.weight * invstd
-        bias = self.bias - mean * scale
+        weight = self.weight
+        bias_parameter = self.bias
+        assert weight is not None
+        assert bias_parameter is not None
+        scale = weight * invstd
+        bias = bias_parameter - mean * scale
         scale = scale.reshape(1, -1, 1, 1, 1)
         bias = bias.reshape(1, -1, 1, 1, 1)
         return input * scale + bias

@@ -3,9 +3,15 @@ import math
 import numpy as np
 import torch
 
+_LAST_SPATIAL_CROP_INDEX = 2
+
 
 def random_short_side_scale_jitter(
-    images: torch.Tensor, min_size: int, max_size: int, boxes: np.ndarray = None, inverse_uniform_sampling: bool = False
+    images: torch.Tensor,
+    min_size: int,
+    max_size: int,
+    boxes: np.ndarray | None = None,
+    inverse_uniform_sampling: bool = False,
 ) -> tuple[torch.Tensor, np.ndarray | None]:
     """Perform a spatial short scale jittering on the given images and corresponding boxes.
 
@@ -65,6 +71,9 @@ def crop_boxes(boxes: np.ndarray | None, x_offset: int, y_offset: int) -> np.nda
         cropped_boxes (ndarray or None): the cropped boxes with dimension of
             `num boxes` x 4.
     """
+    if boxes is None:
+        return None
+
     cropped_boxes = boxes.copy()
     cropped_boxes[:, [0, 2]] = boxes[:, [0, 2]] - x_offset
     cropped_boxes[:, [1, 3]] = boxes[:, [1, 3]] - y_offset
@@ -131,8 +140,8 @@ def horizontal_flip(
         images = images.flip(-1)
 
         width = images.shape[3]
-        if boxes is not None:
-            flipped_boxes[:, [0, 2]] = width - boxes[:, [2, 0]] - 1
+        if flipped_boxes is not None:
+            flipped_boxes[:, [0, 2]] = width - flipped_boxes[:, [2, 0]] - 1
 
     return images, flipped_boxes
 
@@ -168,11 +177,11 @@ def uniform_crop(
     if height > width:
         if spatial_idx == 0:
             y_offset = 0
-        elif spatial_idx == 2:
+        elif spatial_idx == _LAST_SPATIAL_CROP_INDEX:
             y_offset = height - size
     elif spatial_idx == 0:
         x_offset = 0
-    elif spatial_idx == 2:
+    elif spatial_idx == _LAST_SPATIAL_CROP_INDEX:
         x_offset = width - size
     cropped = images[:, :, y_offset : y_offset + size, x_offset : x_offset + size]
 
@@ -253,7 +262,7 @@ def color_jitter(
         images (tensor): the jittered images, the dimension is
             `num frames` x `channel` x `height` x `width`.
     """
-    jitter = []
+    jitter: list[str] = []
     if img_brightness != 0:
         jitter.append("brightness")
     if img_contrast != 0:
@@ -331,7 +340,9 @@ def saturation_jitter(var: float, images: torch.Tensor) -> torch.Tensor:
     return images
 
 
-def lighting_jitter(images: torch.Tensor, alphastd: float, eigval: list, eigvec: list[list]) -> torch.Tensor:
+def lighting_jitter(
+    images: torch.Tensor, alphastd: float, eigval: list[float], eigvec: list[list[float]]
+) -> torch.Tensor:
     """Perform AlexNet-style PCA jitter on the given images.
 
     Args:
@@ -359,7 +370,7 @@ def lighting_jitter(images: torch.Tensor, alphastd: float, eigval: list, eigvec:
     return out_images
 
 
-def color_normalization(images: torch.Tensor, mean: list, stddev: list) -> torch.Tensor:
+def color_normalization(images: torch.Tensor, mean: list[float], stddev: list[float]) -> torch.Tensor:
     """Perform color normalization on the given images.
 
     Args:

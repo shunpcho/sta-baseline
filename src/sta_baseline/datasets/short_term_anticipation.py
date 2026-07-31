@@ -354,7 +354,7 @@ class Ego4dShortTermAnticipation(Dataset):
             raise NotImplementedError(f"Unsupported split mode {self._split}")
 
         # Convert image to CHW keeping BGR order.
-        imgs = [cv2_transform.HWC2CHW(img) for img in imgs]
+        imgs = [cv2_transform.hwc_to_chw(img) for img in imgs]
 
         # Image [0, 255] -> [0, 1].
         imgs = [img / 255.0 for img in imgs]
@@ -679,7 +679,7 @@ class Ego4dShortTermAnticipation(Dataset):
             video_tensor, boxes = self._images_and_boxes_preprocessing_cv2(frames, boxes=boxes)
         return video_tensor, boxes
 
-    def __getitem__(self, idx: int) -> tuple[Any, ...]:
+    def __getitem__(self, idx: int) -> tuple[Any, ...]:  # noqa: PLR0914
         """Generate corresponding clips, boxes, labels and metadata for given idx.
 
         Args:

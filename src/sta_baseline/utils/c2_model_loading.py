@@ -4,9 +4,10 @@
 """Caffe2 to PyTorch checkpoint name converting utility."""
 
 import re
+from collections.abc import Callable
 
 
-def get_name_convert_func():
+def get_name_convert_func() -> Callable[[str], str]:
     """Get the function to convert Caffe2 layer names to PyTorch layer names.
 
     Returns:
@@ -96,7 +97,7 @@ def get_name_convert_func():
         [r"(.*)[\._]w\Z", r"\1.weight"],
     ]
 
-    def convert_caffe2_name_to_pytorch(caffe2_layer_name):
+    def convert_caffe2_name_to_pytorch(caffe2_layer_name: str) -> str:
         """Convert the caffe2_layer_name to pytorch format by apply the list of regular expressions.
 
         Args:

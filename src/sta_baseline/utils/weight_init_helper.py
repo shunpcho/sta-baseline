@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
-"""Utility function for weight initialization"""
+"""Utility functions for weight initialization."""
+
+from typing import cast
 
 from fvcore.nn.weight_init import c2_msra_fill
-from torch import nn
+from torch import nn, Tensor
 
 
-def init_weights(model, fc_init_std=0.01, zero_init_final_bn=True):
+def init_weights(model: nn.Module, fc_init_std: float = 0.01, zero_init_final_bn: bool = True) -> None:
     """Performs ResNet style weight initialization.
 
     Args:
+        model (nn.Module): model whose weights to initialize.
         fc_init_std (float): the expected standard deviation for fc layer.
         zero_init_final_bn (bool): if True, zero initialize the final bn for
             every bottleneck.
@@ -30,10 +33,12 @@ def init_weights(model, fc_init_std=0.01, zero_init_final_bn=True):
                 batchnorm_weight = 0.0
             else:
                 batchnorm_weight = 1.0
-            if m.weight is not None:
-                m.weight.data.fill_(batchnorm_weight)
-            if m.bias is not None:
-                m.bias.data.zero_()
+            batchnorm_weight_parameter = cast("Tensor | None", m.weight)
+            batchnorm_bias_parameter = cast("Tensor | None", m.bias)
+            if batchnorm_weight_parameter is not None:
+                batchnorm_weight_parameter.data.fill_(batchnorm_weight)
+            if batchnorm_bias_parameter is not None:
+                batchnorm_bias_parameter.data.zero_()
         if isinstance(m, nn.Linear):
             m.weight.data.normal_(mean=0.0, std=fc_init_std)
             m.bias.data.zero_()

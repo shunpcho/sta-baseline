@@ -1,6 +1,7 @@
 import itertools
 import json
 import pathlib
+from collections.abc import Iterable
 
 import numpy as np
 import torch
@@ -13,9 +14,10 @@ from sta_baseline.tasks.video_task import VideoTask
 from sta_baseline.utils import logging, misc
 
 logger = logging.get_logger(__name__)
+_IGNORE_VERB_LABEL = -100
 
 
-def t2a(tensors):
+def t2a(tensors: Iterable[torch.Tensor]) -> list[np.ndarray]:
     return [t.detach().cpu().numpy().copy() for t in tensors]
 
 
@@ -39,7 +41,7 @@ class ShortTermAnticipationTask(VideoTask):
         verb_labels = torch.cat(verb_labels, 0)
         ttc_targets = torch.cat(ttc_targets, 0)
 
-        valid_verbs = verb_labels != -100
+        valid_verbs = verb_labels != _IGNORE_VERB_LABEL
         verb_labels = verb_labels[valid_verbs]
         pred_verb = pred_verb[valid_verbs]
 
@@ -88,7 +90,7 @@ class ShortTermAnticipationTask(VideoTask):
             misc.calculate_and_update_precise_bn(self.train_loader, self.model, self.cfg.BN.NUM_BATCHES_PRECISE)
         _ = misc.aggregate_split_bn_stats(self.model)
 
-        keys = [x for x in outputs[0].keys() if "loss" not in x]
+        keys = [key for key in outputs[0] if "loss" not in key]
         for key in keys:
             metric = torch.tensor([x[key] for x in outputs]).mean()
             self.log(key, metric)
@@ -117,7 +119,7 @@ class ShortTermAnticipationTask(VideoTask):
 
     def validation_epoch_end(self, outputs):
         data = {}
-        for k in outputs[0].keys():
+        for k in outputs[0]:
             data[k] = list(itertools.chain(*[x[k] for x in outputs]))
             data[k] = list(itertools.chain(*du.all_gather_unaligned(data[k])))
 
@@ -127,14 +129,14 @@ class ShortTermAnticipationTask(VideoTask):
         for k in data:
             data[k] = [data[k][i] for i in unique_idx]
 
-        map = STAMeanAveragePrecision()
-        for p, g in zip(data["pred_detections"], data["gt_detections"]):
-            map.add(p, g)
+        metric = STAMeanAveragePrecision()
+        for prediction, ground_truth in zip(data["pred_detections"], data["gt_detections"], strict=True):
+            metric.add(prediction, ground_truth)
 
-        vals = map.evaluate()
-        names = map.get_short_names()
+        vals = metric.evaluate()
+        names = metric.get_short_names()
 
-        for name, val in zip(names, vals):
+        for name, val in zip(names, vals, strict=True):
             self.log(f"val/{name}", val)
 
         self.log("val/map_box_noun_verb_ttc_err", 100 - vals[-1])
@@ -145,7 +147,7 @@ class ShortTermAnticipationTask(VideoTask):
         verb_labels = np.concatenate(data["verb_labels"], axis=0)
         ttc_targets = np.concatenate(data["ttc_targets"], axis=0)
 
-        valid_verbs = verb_labels != -100
+        valid_verbs = verb_labels != _IGNORE_VERB_LABEL
         verb_labels = verb_labels[valid_verbs]
         pred_verb = pred_verb[valid_verbs]
 
@@ -180,7 +182,7 @@ class ShortTermAnticipationTask(VideoTask):
 
     def test_epoch_end(self, outputs):
         data = {}
-        for k in outputs[0].keys():
+        for k in outputs[0]:
             data[k] = list(itertools.chain(*[x[k] for x in outputs]))
             data[k] = list(itertools.chain(*du.all_gather_unaligned(data[k])))
 
@@ -203,9 +205,9 @@ class ShortTermAnticipationTask(VideoTask):
                             "time_to_contact": float(z[3]),
                             "score": float(z[4]),
                         }
-                        for z in zip(x["boxes"], x["nouns"], x["verbs"], x["ttcs"], x["scores"])
+                        for z in zip(x["boxes"], x["nouns"], x["verbs"], x["ttcs"], x["scores"], strict=True)
                     ]
-                    for uid, x in zip(data["uids"], data["pred_detections"])
+                    for uid, x in zip(data["uids"], data["pred_detections"], strict=True)
                 },
             }
             with pathlib.Path(self.cfg.RESULTS_JSON).open("w") as f:
