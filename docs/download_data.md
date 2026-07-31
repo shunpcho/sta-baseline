@@ -51,42 +51,52 @@
   --output_directory ~/ego4d_data \
   --datasets annotations,clips \
   --benchmarks fho \
-  --aws_profile_name ego4d
+  --aws_profile_name ego4d \
+  --version v2
   ```
 
 - Preprocessing
 
 毎回動画を読み込み学習するのは遅延が大きい。事前にLMDB化し効率よく学習できるようにする。
 
-```json
-{
-  "info": {
-    "description": "Ego4D Short-Term Object Interaction Anticipation Dataset",
-    "version": "2.0",
-    "split": "train",
-    "include_annotations": true,
-    "video_metadata": {
-      "26202090-684d-4be8-b3cc-de04da827e91": {
-        "frame_width": 1440,
-        "frame_height": 1080,
-        "fps": 30.0
-      },
-      "d8c894ab-7b08-4983-9e80-fdb5d6ee0202": {
-        "frame_width": 1440,
-        "frame_height": 1080,
-        "fps": 30.0
-      },
-      "cde41c4f-50d1-4910-9f2a-4c7b6987df92": {
-        "frame_width": 1920,
-        "frame_height": 1440,
-        "fps": 30.0
-      },
-      "5b97f47f-f015-46f3-8879-3fcc2a61a728": {
-        "frame_width": 1440,
-        "frame_height": 1080,
-        "fps": 30.0
-      }
-    }
-  }
-}
+## Pre-trained models
+
+The pre-trained models and pre-extracted object detections can be downloaded using the CLI with the following command:
+
+```bash
+ego4d --output_directory="ego4d_data" --datasets sta_models --aws_profile_name ego4d --version v2
+```
+
+### Generating COCO-style annotations
+
+train
+
+```bash
+mkdir short_term_anticipation/annotations
+python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_train.json short_term_anticipation/annotations/train_coco.json
+```
+
+val
+
+```bash
+python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_val.json short_term_anticipation/annotations/val_coco.json
+```
+
+### SlowFast model
+
+```bash
+mkdir data/pretrained_models/
+wget https://dl.fbaipublicfiles.com/pyslowfast/model_zoo/kinetics400/SLOWFAST_8x8_R50.pkl -O data/pretrained_models/SLOWFAST_8x8_R50.pkl
+```
+
+## Run
+
+```bash
+mkdir -p short_term_anticipation/models/slowfast_model/
+python src/sta_baseline/run_sta.py \
+    --cfg config_yaml/SLOWFAST_32x1_8x4_R50_v2.yaml \
+    EGO4D_STA.ANNOTATION_DIR ego4d_data/v2/annotations \
+    EGO4D_STA.RGB_LMDB_DIR data/clip_lmdb \
+    EGO4D_STA.OBJ_DETECTIONS ego4d_data/v2/sta_models/object_detections.json
+    OUTPUT_DIR short_term_anticipation/models/slowfast_model/
 ```

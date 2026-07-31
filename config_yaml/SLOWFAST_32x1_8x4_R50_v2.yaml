@@ -2,7 +2,7 @@ TRAIN:
   ENABLE: True
   DATASET: Ego4dShortTermAnticipation
   BATCH_SIZE: 32
-CHECKPOINT_FILE_PATH: pretrained_models/SLOWFAST_8x8_R50.pkl
+CHECKPOINT_FILE_PATH: data/pretrained_models/SLOWFAST_8x8_R50.pkl
 CHECKPOINT_VERSION: caffe2
 DATA:
   NUM_FRAMES: 32
@@ -71,7 +71,7 @@ TEST:
 DATA_LOADER:
   NUM_WORKERS: 2
   PIN_MEMORY: True
-NUM_GPUS: 4
+NUM_GPUS: 1
 NUM_SHARDS: 1
 RNG_SEED: 0
 OUTPUT_DIR: short_term_anticipation/models/slowfast_model/
