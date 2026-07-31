@@ -11,6 +11,7 @@ dependencies = [
     "imutils>=0.5.4",
     "lmdb>=2.3.0",
     "opencv-python>=5.0.0.93",
+    "pandas>=3.0.5",
     "pytorch-lightning>=2.6.5",
     "pytorchvideo>=0.1.5",
     "torch>=2.13.0",
