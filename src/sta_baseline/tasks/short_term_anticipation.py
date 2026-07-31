@@ -30,6 +30,9 @@ class ShortTermAnticipationTask(VideoTask):
         self.verb_loss_fun = losses.get_loss_func(cfg.MODEL.VERB_LOSS_FUNC)(reduction="mean")
         self.ttc_loss_fun = losses.get_loss_func(cfg.MODEL.TTC_LOSS_FUNC)(reduction="mean")
         self.lossw = cfg.MODEL.STA_LOSS_WEIGHTS
+        self._train_epoch_outputs = []
+        self._val_epoch_outputs = []
+        self._test_epoch_outputs = []
 
     def training_step(self, batch, batch_idx):
         _, inputs, pred_boxes, verb_labels, ttc_targets, _ = batch
@@ -82,18 +85,23 @@ class ShortTermAnticipationTask(VideoTask):
             self.log(key, metric)
 
         step_result["loss"] = loss
+        self._train_epoch_outputs.append({k: v for k, v in step_result.items() if "loss" not in k})
 
         return step_result
 
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self):
         if self.cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(self.model)) > 0:
             misc.calculate_and_update_precise_bn(self.train_loader, self.model, self.cfg.BN.NUM_BATCHES_PRECISE)
         _ = misc.aggregate_split_bn_stats(self.model)
 
-        keys = [key for key in outputs[0] if "loss" not in key]
+        if not self._train_epoch_outputs:
+            return
+
+        keys = list(self._train_epoch_outputs[0].keys())
         for key in keys:
-            metric = torch.tensor([x[key] for x in outputs]).mean()
+            metric = torch.tensor([x[key] for x in self._train_epoch_outputs]).mean()
             self.log(key, metric)
+        self._train_epoch_outputs.clear()
 
     def validation_step(self, batch, batch_idx):
         uids, inputs, pred_boxes, verb_labels, ttc_targets, extra_data = batch
@@ -107,7 +115,7 @@ class ShortTermAnticipationTask(VideoTask):
             extra_data["pred_object_scores"],
         )
 
-        return {
+        output = {
             "uids": uids,
             "pred_detections": detections,
             "gt_detections": extra_data["gt_detections"],
@@ -116,11 +124,16 @@ class ShortTermAnticipationTask(VideoTask):
             "verb_scores": [torch.from_numpy(x["verb_scores"]) for x in raw_predictions],
             "ttcs": [torch.from_numpy(x["ttcs"]) for x in raw_predictions],
         }
+        self._val_epoch_outputs.append(output)
+        return output
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
+        if not self._val_epoch_outputs:
+            return
+
         data = {}
-        for k in outputs[0]:
-            data[k] = list(itertools.chain(*[x[k] for x in outputs]))
+        for k in self._val_epoch_outputs[0]:
+            data[k] = list(itertools.chain(*[x[k] for x in self._val_epoch_outputs]))
             data[k] = list(itertools.chain(*du.all_gather_unaligned(data[k])))
 
         _, unique_idx = np.unique(data["uids"], return_index=True)
@@ -165,6 +178,7 @@ class ShortTermAnticipationTask(VideoTask):
 
         self.log("val/ttc_error", ttc_error)
         self.log("val/verb_accuracy", cls_accuracy)
+        self._val_epoch_outputs.clear()
 
     def test_step(self, batch, batch_idx):
         uids, inputs, pred_boxes, _, _, extra_data = batch
@@ -178,12 +192,17 @@ class ShortTermAnticipationTask(VideoTask):
             extra_data["pred_object_scores"],
         )
 
-        return {"uids": uids, "pred_detections": detections}
+        output = {"uids": uids, "pred_detections": detections}
+        self._test_epoch_outputs.append(output)
+        return output
 
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
+        if not self._test_epoch_outputs:
+            return
+
         data = {}
-        for k in outputs[0]:
-            data[k] = list(itertools.chain(*[x[k] for x in outputs]))
+        for k in self._test_epoch_outputs[0]:
+            data[k] = list(itertools.chain(*[x[k] for x in self._test_epoch_outputs]))
             data[k] = list(itertools.chain(*du.all_gather_unaligned(data[k])))
 
         _, unique_idx = np.unique(data["uids"], return_index=True)
@@ -212,3 +231,5 @@ class ShortTermAnticipationTask(VideoTask):
             }
             with pathlib.Path(self.cfg.RESULTS_JSON).open("w") as f:
                 json.dump(res, f)
+
+        self._test_epoch_outputs.clear()

@@ -16,12 +16,12 @@ from cv2 import imdecode, imencode, IMREAD_COLOR
 from decord import VideoReader
 from fvcore.common.config import CfgNode
 from pytorchvideo.data.encoded_video import EncodedVideo
-from pytorchvideo.transforms.functional import uniform_temporal_subsample
 from torch.utils.data import Dataset
 
 from sta_baseline.datasets import cv2_transform
 from sta_baseline.datasets.build import DATASET_REGISTRY
-from sta_baseline.evaluation import compute_iou
+from sta_baseline.evaluation.sta_evaluate import compute_iou
+from sta_baseline.lib.pytorchvideo.transform_functional import uniform_temporal_subsample
 from sta_baseline.utils import datasets_utils, logging, transform
 from sta_baseline.utils.type_alias import Split
 
@@ -152,7 +152,7 @@ class Ego4DHLMDB:
             map_size: Maximum size of the LMDBs in bytes.
         """
         self.environments = {}
-        self.path_to_root = path_to_root
+        self.path_to_root = Path(path_to_root)
         self.path_to_root.mkdir(parents=True, exist_ok=True)
         self.readonly = readonly
         self.lock = lock
@@ -264,7 +264,7 @@ class Ego4dShortTermAnticipation(Dataset):
         if self.cfg.EGO4D_STA.VIDEO_LOAD_BACKEND == "lmdb":
             self._hlmdb = Ego4DHLMDB(self.cfg.EGO4D_STA.RGB_LMDB_DIR, readonly=True, lock=False)
 
-        with Path(cfg.EGO4D_STA.ANNOTATION_DIR, cfg.EGO4D_STA.OBJ_DETECTIONS).open(encoding="utf-8") as f:
+        with Path(cfg.EGO4D_STA.OBJ_DETECTIONS).open(encoding="utf-8") as f:
             self._obj_detections = json.load(f)
 
         self._load_data(cfg)
@@ -295,6 +295,21 @@ class Ego4dShortTermAnticipation(Dataset):
             self._annotations = self._load_lists(cfg.EGO4D_STA.VAL_LISTS)
         else:  # self._split == Split.TEST
             self._annotations = self._load_lists(cfg.EGO4D_STA.TEST_LISTS)
+
+        annotations = self._annotations["annotations"]
+        videos = self._annotations["videos"]
+        valid_annotations: list[dict[str, Any]] = []
+        skipped = 0
+        for ann in annotations:
+            video_id = ann.get("clip_uid")
+            if isinstance(video_id, str) and video_id in videos:
+                valid_annotations.append(ann)
+            else:
+                skipped += 1
+
+        if skipped > 0:
+            logger.warning("Skipped %d annotations with missing or unknown clip_uid.", skipped)
+        self._annotations["annotations"] = valid_annotations
 
     def __len__(self) -> int:
         return len(self._annotations["annotations"])
@@ -595,7 +610,9 @@ class Ego4dShortTermAnticipation(Dataset):
         uid = ann["uid"]
 
         # get video_id, frame_number, gt_boxes, gt_noun_labels, gt_verb_labels and gt_ttc_targets
-        video_id = ann["video_uid"]
+        video_id = ann.get("clip_uid")
+        if not isinstance(video_id, str) or video_id not in self._annotations["videos"]:
+            raise KeyError(f"Invalid clip_uid in annotation: uid={uid}")
         frame_number = ann["frame"]
 
         if "objects" in ann:
@@ -648,7 +665,7 @@ class Ego4dShortTermAnticipation(Dataset):
         return pred_boxes, pred_object_labels, pred_scores
 
     def _load_frames(self, video_id: str, frame_number: int, fps: float) -> torch.Tensor:
-        video_path = Path(self.cfg.EGO4D_STA.VIDEO_DIR, video_id + ".mp4")
+        video_path = Path(self.cfg.EGO4D_STA.VIDEOS_DIR, video_id + ".mp4")
 
         if self.cfg.EGO4D_STA.VIDEO_LOAD_BACKEND == "pytorchvideo":
             frames = self._load_frames_pytorch_video(str(video_path), frame_number, fps)

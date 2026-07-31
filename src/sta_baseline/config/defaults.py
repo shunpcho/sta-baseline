@@ -480,7 +480,7 @@ _C.SOLVER.WARMUP_START_LR = 0.01
 _C.SOLVER.OPTIMIZING_METHOD = "sgd"
 
 # Which PyTorch Lightning accelerator to use
-_C.SOLVER.ACCELERATOR = "ddp"
+_C.SOLVER.ACCELERATOR = "auto"
 
 # ---------------------------------------------------------------------------- #
 # Misc options
