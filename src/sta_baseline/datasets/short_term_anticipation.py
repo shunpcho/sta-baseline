@@ -297,6 +297,7 @@ class Ego4dShortTermAnticipation(Dataset):
             self._annotations = self._load_lists(cfg.EGO4D_STA.TEST_LISTS)
 
         annotations = self._annotations["annotations"]
+        total_annotations = len(annotations)
         videos = self._annotations["videos"]
         valid_annotations: list[dict[str, Any]] = []
         skipped = 0
@@ -310,6 +311,14 @@ class Ego4dShortTermAnticipation(Dataset):
         if skipped > 0:
             logger.warning("Skipped %d annotations with missing or unknown clip_uid.", skipped)
         self._annotations["annotations"] = valid_annotations
+        split_name = getattr(self._split, "value", str(self._split))
+        logger.info(
+            "Loaded %d annotations for split=%s (raw=%d, skipped=%d).",
+            len(valid_annotations),
+            split_name,
+            total_annotations,
+            skipped,
+        )
 
     def __len__(self) -> int:
         return len(self._annotations["annotations"])
