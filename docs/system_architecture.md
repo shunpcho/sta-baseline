@@ -1,75 +1,89 @@
 # System Architecture of STA Baseline
 
-The system Arcitecture for building a baseline to solve Sort Term Anticipation (STA).
-This is replica of Ego4D [forcasting/SHORT_TERM_ANTICIPATION.md](https://github.com/EGO4D/forecasting/blob/main/SHORT_TERM_ANTICIPATION.md)
+This document describes the system architecture of a baseline for Short-Term Anticipation (STA).
+It is based on the EGO4D [Short-Term Anticipation task specification](https://github.com/EGO4D/forecasting/blob/main/SHORT_TERM_ANTICIPATION.md).
+
+## Table of Contents
+
+- [Tasks](#tasks)
+- [System Architecture](#system-architecture)
+  - [1. Extract 32 Frames](#1-extract-32-frames)
+  - [2. Object Detection](#2-object-detection)
+  - [3. Predict Verb Labels and Estimate Time to Contact](#3-predict-verb-labels-and-estimate-time-to-contact)
+- [Data](#data)
+  - [STA Annotations](#sta-annotations)
+  - [Hand Boxes](#hand-boxes)
+  - [FHO Annotation Information](#fho-annotation-information)
 
 ## Tasks
 
-一人称の動画から人が何をしようとしているかを予測する。動画中の全探索ではなく、特定のタイムスタンプごとに予測を行う。
+The task predicts a camera wearer's future interactions from first-person video. Predictions are made at specified timestamps rather than by exhaustively searching the entire video.
 
-- (主観者が次に作用する)オブジェクトのbbox
-- (主観者が次に作用する)オブジェクトのカテゴリ
-- 次にどのような行動をとるか
-- オブジェクトと作用が開始するまでの予測時間
+- The bounding box of the object the camera wearer will next interact with.
+- The noun category of that object.
+- The verb describing the anticipated interaction.
+- The time until contact (TTC).
 
-評価は「Noun Top-5 mAP」「Noun+Verb Top-5 mAP」「Noun+TTC Top-5 mAP」「Overall Top-5 mAP」で計算される。
+The task is evaluated using Noun Top-5 mAP, Noun+Verb Top-5 mAP, Noun+TTC Top-5 mAP, and Overall Top-5 mAP.
 
 ## System Architecture
 
-This system has three steps to solve the tasks.
+The system consists of three steps:
 
-1. Extract 32 frames
-2. Object Detection
+1. Extract 32 frames.
+2. Detect objects.
 3. Predict verb labels and estimate time to contact (TTC).
 
-### 1. Extract 32 frames
+### 1. Extract 32 Frames
 
-動画のAnnotationから前の32フレームを抽出する。（事前にフレーム抽出とアノテーションの作り替えが必要。）
+Extract the 32 frames preceding each annotated timestamp. This requires preprocessing the video frames and annotations into LMDB.
 
 ### 2. Object Detection
 
-普通にある画像物体検出
+Apply image-based object detection to the extracted frames.
 
-### 3. Predict verb labels and estimate time to contact (TTC)
+### 3. Predict Verb Labels and Estimate Time to Contact
 
-[SlowFast](https://github.com/facebookresearch/SlowFast)を用いた行動ラベル抽出と接触時間予測。
+Use [SlowFast](https://github.com/facebookresearch/SlowFast) to predict action labels and time to contact.
 
 ## Data
 
-データセットは動画フレーム＋アノテーションの情報が与えられる。1つのitemが1つのイベントに対応する。ただし、アノテーション情報は特定の直前フレームの情報を抽出したものである。
+The dataset provides video frames and annotation data. Each annotation represents one anticipated interaction at a specific timestamp.
 
-### Annotation
+### STA Annotations
 
-Annotationには以下の情報が含まれる。
+STA annotation files contain metadata and annotations.
 
-#### `fho_sta_<split>_.json`
-
-```json
-{
-  "description": "...",
-  "version": "2.0",
-  "split": "train",
-  "include_annotations": true,
-  "video_metadata": { ... },
-  "items": [ ... ]   ← Training sample
-}
-```
-
-- Contents of `"items"`
+#### `fho_sta_<split>.json`
 
 ```json
 {
-"uid": "unique_id",
-"video_id": "video_uid",
-"frame": <frame_number>,
-"clip_id": "...",
-"clip_uid": "...",
-"clip_frame": <frame_index_in_clip>,
-"objects": [ ... ]   ← Annotations per objects
+  "info": {
+    "description": "...",
+    "version": "2.0",
+    "split": "train",
+    "include_annotations": true,
+    "video_metadata": { ... }
+  },
+  "annotations": [ ... ]
 }
 ```
 
-- Contents of `"objects"`
+Each entry in `"annotations"` describes an anticipation sample:
+
+```json
+{
+  "uid": "unique_id",
+  "video_uid": "video_uid",
+  "frame": <frame_number>,
+  "clip_id": "...",
+  "clip_uid": "...",
+  "clip_frame": <frame_index_in_clip>,
+  "objects": [ ... ]
+}
+```
+
+- Each object in `"objects"` contains the following fields:
   - The `verb` has 98 classes.
   - The `noun` has 301 classes.
 
@@ -78,28 +92,29 @@ Annotationには以下の情報が含まれる。
   "box": [x1, y1, x2, y2],
   "verb_category_id": <int>,
   "noun_category_id": <int>,
-  "ttc": <float>   ← Time-To-Contact
+  "time_to_contact": <float>
 }
 ```
 
-- Contents of `"video_metadata"`
-  It contains full scale resolution. For example, 1920x1080(1080p), 1280x720(720p)
+`"video_metadata"` contains each video's full resolution, for example, 1920 x 1080 (1080p) or 1280 x 720 (720p).
 
 ```json
-"video_metadata": {
-  "<video_uid>": {
-    "frame_width": <int>,
-    "frame_height": <int>,
-    "fps": <float>,
-    "year": "...",
-    "date_created": "..."
+{
+  "info": {
+    "video_metadata": {
+      "<video_uid>": {
+        "frame_width": <int>,
+        "frame_height": <int>,
+        "fps": <float>
+      }
+    }
   }
 }
 ```
 
 #### Hand Boxes
 
-手のbboxのアノテーション情報。すべてのフレームに対して左右の手のbbox座標が書かれている。
+Hand-box annotations provide the bounding-box coordinates for the left and right hands in each frame.
 
 `fho_hands_<split>.json`
 
@@ -128,7 +143,7 @@ Annotationには以下の情報が含まれる。
 
 ### FHO annotation information
 
-`fho_main.json` is annotation data for forecasting.
+`fho_main.json` contains the master annotations for forecasting.
 
 ```json
 {
@@ -153,50 +168,38 @@ Annotationには以下の情報が含まれる。
           "clip_parent_end_frame": 6229,
           "redacted": true
         }
+      ]
+    }
+  ]
+}
 ```
 
 `fho_sta_train.json`
+
 ```json
 {
   "info": {
-    "description": "Ego4D Short-Term Object Interaction Anticipation Dataset", 
-    "version": "2.0", 
-    "split": "train", 
-    "include_annotations": true, 
+    "description": "Ego4D Short-Term Object Interaction Anticipation Dataset",
+    "version": "2.0",
+    "split": "train",
+    "include_annotations": true,
     "video_metadata": {
       "26202090-684d-4be8-b3cc-de04da827e91": {
-        "frame_width": 1440, 
-        "frame_height": 1080, 
+        "frame_width": 1440,
+        "frame_height": 1080,
         "fps": 30.0
-        }, 
-        "d8c894ab-7b08-4983-9e80-fdb5d6ee0202": {
-          "frame_width": 1440, 
-          "frame_height": 1080, 
-          "fps": 30.0
-        }, 
-        "cde41c4f-50d1-4910-9f2a-4c7b6987df92": {
-          "frame_width": 1920, 
-          "frame_height": 1440, 
-          "fps": 30.0
-        }, 
-        "5b97f47f-f015-46f3-8879-3fcc2a61a728": {
-          "frame_width": 1440, 
-          "frame_height": 1080, 
-          "fps": 30.0
-        }, 
-        "3b609b23-f91d-43da-9918-ce928181f53f": {
-          "frame_width": 1440, 
-          "frame_height": 1080, 
-          "fps": 30.0
-          }, 
-        "9b316b36-7f09-450d-b397-1961723fefb7": {
-          "frame_width": 1440, 
-          "frame_height": 1080, 
-          "fps": 30.0
-        }, 
-        "7f9f75fd-a660-4635-8890-239c6ad82023": {
-          "frame_width": 1440, 
-          "frame_height": 1080, 
-          "fps": 30.0
-        },
+      },
+      "d8c894ab-7b08-4983-9e80-fdb5d6ee0202": {
+        "frame_width": 1440,
+        "frame_height": 1080,
+        "fps": 30.0
+      },
+      "cde41c4f-50d1-4910-9f2a-4c7b6987df92": {
+        "frame_width": 1920,
+        "frame_height": 1440,
+        "fps": 30.0
+      }
+    }
+  }
+}
 ```

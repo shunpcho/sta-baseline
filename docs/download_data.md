@@ -1,34 +1,44 @@
-# How to download EGO4D datasets
+# How to Download EGO4D Datasets
+
+Download EGO4D datasets with the [EGO4D CLI](https://github.com/facebookresearch/Ego4d). Video clips, annotations, and pretrained models are available. Use the following commands to download the datasets from the official EGO4D release.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+  - [EGO4D License Agreement](#ego4d-license-agreement)
+  - [Set Up AWS](#set-up-aws)
+  - [Download Datasets](#download-datasets)
+  - [Download the SlowFast Model](#download-the-slowfast-model)
+  - [Download STA Pretrained Models](#download-sta-pretrained-models)
+- [Next Steps](#next-steps)
 
 ## Prerequisites
 
-### Ego4D License Agreement
+Install the [EGO4D Dataset Download CLI](https://ego4d-data.org/docs/CLI/). An approved EGO4D license and AWS credentials are required.
 
-- [ライセンス申請](https://ego4d.dev/request/ego4d)をする(承認まで2日程度)
+### EGO4D License Agreement
 
-### Setup AWS
+Request access through the [EGO4D License Agreement](https://ego4d.dev/request/ego4d). Approval may take approximately two days.
 
-- Install AWS CLI
+### Set Up AWS
 
-- Config access key
+Install the AWS CLI, then configure the access key provided by EGO4D:
 
-  ライセンス認証後に送られてくるキーを入力する
-
-  ```bash
-  aws configure --profile ego4d
-  ```
+```bash
+aws configure --profile ego4d
+```
 
 ### Download Datasets
 
 - STA annotations
 
-  JSONとCSVファイルのアノテーションデータ
+  Annotation data in JSON and CSV formats.
 
 - STA clips
 
-  STA 用に切り出された短い動画クリップ
+  Short video clips extracted for the task.
 
-- Directory
+- Expected directory structure:
 
   ```
   ego4d_data/
@@ -48,55 +58,28 @@
 
   ```bash
   ego4d \
-  --output_directory ~/ego4d_data \
+  --output_directory ego4d_data \
   --datasets annotations,clips \
   --benchmarks fho \
   --aws_profile_name ego4d \
   --version v2
   ```
 
-- Preprocessing
+### Download the SlowFast Model
 
-毎回動画を読み込み学習するのは遅延が大きい。事前にLMDB化し効率よく学習できるようにする。
+```bash
+mkdir -p data/pretrained_models/
+wget https://dl.fbaipublicfiles.com/pyslowfast/model_zoo/kinetics400/SLOWFAST_8x8_R50.pkl -O data/pretrained_models/SLOWFAST_8x8_R50.pkl
+```
 
-## Pre-trained models
+### Download STA Pretrained Models
 
-The pre-trained models and pre-extracted object detections can be downloaded using the CLI with the following command:
+Download the STA pretrained models and pre-extracted object detections with the following CLI command:
 
 ```bash
 ego4d --output_directory="ego4d_data" --datasets sta_models --aws_profile_name ego4d --version v2
 ```
 
-### Generating COCO-style annotations
+## Next Steps
 
-train
-
-```bash
-mkdir short_term_anticipation/annotations
-python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_train.json short_term_anticipation/annotations/train_coco.json
-```
-
-val
-
-```bash
-python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_val.json short_term_anticipation/annotations/val_coco.json
-```
-
-### SlowFast model
-
-```bash
-mkdir data/pretrained_models/
-wget https://dl.fbaipublicfiles.com/pyslowfast/model_zoo/kinetics400/SLOWFAST_8x8_R50.pkl -O data/pretrained_models/SLOWFAST_8x8_R50.pkl
-```
-
-## Run
-
-```bash
-mkdir -p short_term_anticipation/models/slowfast_model/
-python src/sta_baseline/run_sta.py \
-    --cfg config_yaml/SLOWFAST_32x1_8x4_R50_v2.yaml \
-    EGO4D_STA.ANNOTATION_DIR ego4d_data/v2/annotations \
-    EGO4D_STA.RGB_LMDB_DIR data/clip_lmdb \
-    EGO4D_STA.OBJ_DETECTIONS ego4d_data/v2/sta_models/object_detections.json
-    OUTPUT_DIR short_term_anticipation/models/slowfast_model/
-```
+Create an LMDB dataset before training to avoid repeatedly reading video files. See [the preprocessing instructions](../README.md#create-lmdb).
