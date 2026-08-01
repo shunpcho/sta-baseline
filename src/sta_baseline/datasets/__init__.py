@@ -1,0 +1,1 @@
+from sta_baseline.datasets.short_term_anticipation import Ego4dShortTermAnticipation as Ego4dShortTermAnticipation

@@ -20,11 +20,16 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, PyAVVideoReader
+from sta_baseline.utils import logging
 from sta_baseline.utils.type_alias import FHOSTAAnnotation
+
+logger = logging.get_logger(__name__)
 
 
 def main() -> None:
     """Main function to parse command-line arguments and create LMDBs."""
+    logging.setup_logging()
+
     parser = ArgumentParser()
 
     parser.add_argument("path_to_annotations", type=Path, help="Path to the annotations file.")
@@ -65,6 +70,19 @@ def main() -> None:
         )
         for annotation in fho_sta_annotations
     ]
+
+    non_empty_video_uid_count = sum(1 for annotation in annotations if annotation["video_uid"])
+    non_empty_clip_uid_count = sum(1 for annotation in annotations if annotation["clip_uid"])
+    unique_video_uids = {annotation["video_uid"] for annotation in annotations if annotation["video_uid"]}
+    unique_clip_uids = {annotation["clip_uid"] for annotation in annotations if annotation["clip_uid"]}
+    logger.info(
+        "Annotation stats: "
+        f"annotations={len(annotations)}, "
+        f"video_uid_non_empty={non_empty_video_uid_count}, "
+        f"clip_uid_non_empty={non_empty_clip_uid_count}, "
+        f"video_uid={len(unique_video_uids)}, "
+        f"clip_uid={len(unique_clip_uids)}"
+    )
 
     # Which 'video_uid' or 'clip_uid' to sample from.
     flag = "clip_uid" if args.path_to_videos.name == "clips" else "video_uid"
@@ -153,8 +171,8 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             fname_format: Format string for generating frame keys.
             retry: Number of times to retry loading a video in case of failure.
         """
-        print(f"Video UID filter: {flag}")
-        print(f"Sampling from {len(annotations)} annotations with a temporal context of {context_frames / fps} seconds")
+        logger.info("Video UID filter: %s", flag)
+        logger.info("Sampling from %d annotations with a temporal context of %.3f seconds", len(annotations), context_frames / fps)
 
         existing_frames: dict[str, list[int]] = defaultdict(list)
         for key in existing_keys:
@@ -193,9 +211,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
                         self.chunks.append((video_id, chunk))
                         total_frames += len(chunk)
                     else:
-                        for subchunk in np.array_split(chunk, int(np.ceil(len(chunk) / max_chunk_size))):
-                            self.chunks.append((video_id, subchunk))
-                            total_frames += len(subchunk)
+                        for sub_chunk in np.array_split(chunk, int(np.ceil(len(chunk) / max_chunk_size))):
+                            self.chunks.append((video_id, sub_chunk))
+                            total_frames += len(sub_chunk)
 
         total_frames += len(existing_keys)
 
@@ -203,9 +221,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         total_bytes = total_frames * avg_bytes
         total_gigabytes = total_bytes / 1024 / 1024 / 1024
 
-        print(f"Sampled {len(self.chunks)} chunks / {total_frames} frames in total")
-        print(f"Skipping {len(existing_keys)} existing keys")
-        print(f"Estimated total size: {total_gigabytes:0.2f} GB")
+        logger.info("Sampled %d chunks / %d frames in total", len(self.chunks), total_frames)
+        logger.info("Skipping %d existing keys", len(existing_keys))
+        logger.info("Estimated total size: %.2f GB", total_gigabytes)
 
     def __len__(self) -> int:
         return len(self.chunks)
@@ -236,7 +254,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
                 vr = PyAVVideoReader(str(video_path), height=self.frame_height)
                 ims = vr[remaining_frame_numbers]
             except FileNotFoundError:
-                print(f"WARNING: video not found, skipping {video_id}: {video_path}")
+                logger.warning("video not found, skipping %s: %s", video_id, video_path)
                 return LMDBChunk(ims=[], keys=[])
 
             added_frames = 0
@@ -258,8 +276,9 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             missing_frames = np.setdiff1d(remaining_frame_numbers, list(frames.keys()))
 
             if len(missing_frames) > 0:
-                print(
-                    f"WARNING: could not read the following frames from {video_id}:",
+                logger.warning(
+                    "could not read the following frames from %s: %s",
+                    video_id,
                     ", ".join([str(x) for x in missing_frames]),
                 )
 

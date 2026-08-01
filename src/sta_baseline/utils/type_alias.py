@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from enum import auto, Enum
 from typing import TypedDict
+
+
+class Split(Enum):
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
 
 
 class FHOSTAAnnotation(TypedDict):

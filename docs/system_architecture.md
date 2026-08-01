@@ -125,3 +125,78 @@ Annotationには以下の情報が含まれる。
   ]
 }
 ```
+
+### FHO annotation information
+
+`fho_main.json` is annotation data for forecasting.
+
+```json
+{
+  "version": "2.0",
+  "date": "yymmdd",
+  "description": "FHO Master Annotation",
+  "metadata": "s3://ego4d-consortium-sharing/public/v2/ego4d.json",
+  "videos": [
+    {
+      "annotated_intervals": [
+        {
+          "clip_id": "451",
+          "clip_uid": "a102c79b-405b-4a13-b21e-ab7dc6135b22",
+          "start_sec": 0.0,
+          "end_sec": 207.63,
+          "clip_parent_start_sec": 0.0,
+          "clip_parent_end_sec": 207.633,
+          "narrated_actions": [],
+          "start_frame": 0,
+          "end_frame": 6229,
+          "clip_parent_start_frame": 0,
+          "clip_parent_end_frame": 6229,
+          "redacted": true
+        }
+```
+
+`fho_sta_train.json`
+```json
+{
+  "info": {
+    "description": "Ego4D Short-Term Object Interaction Anticipation Dataset", 
+    "version": "2.0", 
+    "split": "train", 
+    "include_annotations": true, 
+    "video_metadata": {
+      "26202090-684d-4be8-b3cc-de04da827e91": {
+        "frame_width": 1440, 
+        "frame_height": 1080, 
+        "fps": 30.0
+        }, 
+        "d8c894ab-7b08-4983-9e80-fdb5d6ee0202": {
+          "frame_width": 1440, 
+          "frame_height": 1080, 
+          "fps": 30.0
+        }, 
+        "cde41c4f-50d1-4910-9f2a-4c7b6987df92": {
+          "frame_width": 1920, 
+          "frame_height": 1440, 
+          "fps": 30.0
+        }, 
+        "5b97f47f-f015-46f3-8879-3fcc2a61a728": {
+          "frame_width": 1440, 
+          "frame_height": 1080, 
+          "fps": 30.0
+        }, 
+        "3b609b23-f91d-43da-9918-ce928181f53f": {
+          "frame_width": 1440, 
+          "frame_height": 1080, 
+          "fps": 30.0
+          }, 
+        "9b316b36-7f09-450d-b397-1961723fefb7": {
+          "frame_width": 1440, 
+          "frame_height": 1080, 
+          "fps": 30.0
+        }, 
+        "7f9f75fd-a660-4635-8890-239c6ad82023": {
+          "frame_width": 1440, 
+          "frame_height": 1080, 
+          "fps": 30.0
+        },
+```
