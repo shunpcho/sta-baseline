@@ -115,6 +115,14 @@ See [the dataset download instructions](docs/download_data.md).
 
 The baseline recreates the LMDB dataset from the raw data to avoid expensive video processing during training. It contains frame metadata and images associated with timestamps.
 
+- Download dataset from DVC.
+
+```bash
+just dvc_pull_raw_data
+```
+
+- Run creating LMDB.
+
 ```bash
 just create_lmdb
 ```
