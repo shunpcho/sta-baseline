@@ -5,7 +5,7 @@ create_lmdb:
     	results
 
 download_pretrained_model:
-    ego4d --output_directory="~/ego4d_data" --datasets sta_models
+    ego4d --output_directory="ego4d_data" --datasets sta_models
 
 train_sta:
     python src/sta_baseline/run_sta.py \
@@ -15,3 +15,14 @@ train_sta:
     	EGO4D_STA.RGB_LMDB_DIR data/clip_lmdb \
     	EGO4D_STA.OBJ_DETECTIONS ego4d_data/v2/sta_models/object_detections.json \
     	OUTPUT_DIR short_term_anticipation/models/slowfast_model/
+
+dvc_pull_raw_data:
+    dvc pull ego4d_data/v2/annotations.dvc
+    dvc pull ego4d_data/v2/clips.dvc
+    dvc pull ego4d_data/v2/sta_models/object_detections.json.dvc
+
+dvc_pull_lmdb_data:
+    dvc pull data/clip_lmdb.dvc
+
+dvc_pull_slowfast_model:
+    dvc pull data/pretrained_models.dvc

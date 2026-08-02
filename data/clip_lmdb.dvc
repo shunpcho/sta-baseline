@@ -1,0 +1,6 @@
+outs:
+- md5: 37f29a567836ed6a3117b9fb4c515576.dir
+  size: 156675702784
+  nfiles: 2670
+  hash: md5
+  path: clip_lmdb

@@ -1,0 +1,6 @@
+outs:
+- md5: 69f01f73b880dfad8a8c5bd1fc2f5938.dir
+  size: 276854877
+  nfiles: 1
+  hash: md5
+  path: pretrained_models
