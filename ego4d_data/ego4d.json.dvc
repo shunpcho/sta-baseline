@@ -1,0 +1,5 @@
+outs:
+- md5: 01c04ed759d18ff9ecd7716994c76a16
+  size: 89177220
+  hash: md5
+  path: ego4d.json

@@ -1,0 +1,6 @@
+outs:
+- md5: 8d25c1c5e46859f51ec69df9cc0fe8a5.dir
+  size: 690126993
+  nfiles: 5
+  hash: md5
+  path: sta_models
