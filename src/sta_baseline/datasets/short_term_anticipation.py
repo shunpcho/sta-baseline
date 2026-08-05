@@ -152,7 +152,7 @@ class Ego4DHLMDB:
             map_size: Maximum size of the LMDBs in bytes.
         """
         self.environments = {}
-        self.path_to_root = Path(path_to_root)
+        self.path_to_root = path_to_root
         self.path_to_root.mkdir(parents=True, exist_ok=True)
         self.readonly = readonly
         self.lock = lock

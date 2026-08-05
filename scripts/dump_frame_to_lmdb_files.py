@@ -172,7 +172,11 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             retry: Number of times to retry loading a video in case of failure.
         """
         logger.info("Video UID filter: %s", flag)
-        logger.info("Sampling from %d annotations with a temporal context of %.3f seconds", len(annotations), context_frames / fps)
+        logger.info(
+            "Sampling from %d annotations with a temporal context of %.3f seconds",
+            len(annotations),
+            context_frames / fps,
+        )
 
         existing_frames: dict[str, list[int]] = defaultdict(list)
         for key in existing_keys:
