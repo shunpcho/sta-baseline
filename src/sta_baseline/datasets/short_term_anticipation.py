@@ -25,7 +25,7 @@ from sta_baseline.lib.pytorchvideo.transform_functional import uniform_temporal_
 from sta_baseline.utils import datasets_utils, logging, transform
 from sta_baseline.utils.type_alias import Split
 
-type FrameList = int | float | list[int | float] | tuple[int | float, ...]
+type FrameSequence = int | list[int] | tuple[int, ...] | npt.NDArray[np.int_]
 
 logger = logging.get_logger(__name__)
 decord.bridge.set_bridge("torch")
@@ -105,7 +105,7 @@ class PyAVVideoReader:
         self.audio_buffer_frames = audio_buffer_frames
         self.height = height
 
-    def __getitem__(self, frame_list: FrameList) -> list[np.ndarray | None]:
+    def __getitem__(self, frame_list: FrameSequence) -> list[npt.NDArray[np.int_] | None]:
         """Get frames from the video based on the provided frame list.
 
         Args:
@@ -114,7 +114,7 @@ class PyAVVideoReader:
         Returns:
             List of frames as numpy arrays. If a frame is not available, None is returned.
         """
-        if isinstance(frame_list, (int, float)):
+        if isinstance(frame_list, (int, np.integer)):
             frame_list = [int(frame_list)]
         elif not isinstance(frame_list, (list, tuple)):
             frame_list = [int(frame) for frame in frame_list]
@@ -152,7 +152,7 @@ class Ego4DHLMDB:
             map_size: Maximum size of the LMDBs in bytes.
         """
         self.environments = {}
-        self.path_to_root = Path(path_to_root)
+        self.path_to_root = path_to_root
         self.path_to_root.mkdir(parents=True, exist_ok=True)
         self.readonly = readonly
         self.lock = lock

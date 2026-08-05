@@ -7,39 +7,30 @@ available the real module is used unchanged.
 
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from scripts.dump_frame_to_lmdb_files import LMDBAnnotation
 
 
-def _install_torch_stub() -> None:
-    """Insert a minimal torch stub into sys.modules if torch is absent."""
-    if "torch" in sys.modules:
-        return
+def create_dummy_video(movie_path: Path, frames: int = 40) -> None:
+    """Return a dummy video frame for testing."""
+    writer = cv2.VideoWriter(movie_path, cv2.VideoWriter_fourcc(*"mp4v"), 30, (128, 96))
 
-    class _Dataset:
-        """Minimal stub for torch.utils.data.Dataset."""
-
-        def __class_getitem__(cls, item: object) -> type:
-            return cls
-
-        def __init_subclass__(cls, **kwargs: object) -> None:
-            super().__init_subclass__(**kwargs)
-
-    mock_data = MagicMock()
-    mock_data.Dataset = _Dataset
-    mock_data.DataLoader = MagicMock()
-
-    mock_utils = MagicMock()
-    mock_utils.__path__ = []  # make importlib treat this as a package
-    mock_utils.data = mock_data
-
-    mock_torch = MagicMock()
-    mock_torch.__path__ = []  # make importlib treat this as a package
-    mock_torch.utils = mock_utils
-
-    sys.modules.setdefault("torch", mock_torch)
-    sys.modules.setdefault("torch.utils", mock_utils)
-    sys.modules.setdefault("torch.utils.data", mock_data)
+    for _ in range(frames):  # 1 second of video at 30 fps
+        frame = np.random.randint(0, 256, (96, 128, 3), dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
 
 
-_install_torch_stub()
+def create_dummy_annotations() -> list[LMDBAnnotation]:
+    """Create dummy annotations for testing."""
+    annotations: LMDBAnnotation = {
+        "video_uid": "__",
+        "frame": 1136,
+        "clip_uid": "dummy_video",
+        "clip_frame": 2,
+    }
+    return [annotations]
