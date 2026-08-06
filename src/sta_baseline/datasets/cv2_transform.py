@@ -99,7 +99,7 @@ def scale_boxes(size: int, boxes: np.ndarray, height: int, width: int) -> np.nda
 
     Args:
         size (int): size to scale the image.
-        boxes (ndarray): bounding boxes to peform scale. The dimension is
+        boxes (ndarray): bounding boxes to perform scale. The dimension is
         `num boxes` x 4.
         height (int): the height of the image.
         width (int): the width of the image.
@@ -243,7 +243,7 @@ def color_jitter_list(
     Returns:
         images (list): the jittered list of images.
     """
-    jitter = []
+    jitter: list[str] = []
     if img_brightness != 0:
         jitter.append("brightness")
     if img_contrast != 0:
@@ -304,7 +304,7 @@ def color_normalization(image: np.ndarray, mean: list[float], stddev: list[float
     Args:
         image (array): image to perform color normalization.
         mean (float): mean value to subtract.
-        stddev (float): stddev to devide.
+        stddev (float): stddev to divide.
     """
     # Input image should in format of CHW
     assert len(mean) == image.shape[0], "channel mean not computed properly"
@@ -742,7 +742,7 @@ def color_jitter(
     Returns:
         np.ndarray: the jittered image.
     """
-    jitter = []
+    jitter: list[str] = []
     if img_brightness != 0:
         jitter.append("brightness")
     if img_contrast != 0:

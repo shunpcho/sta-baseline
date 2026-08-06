@@ -13,10 +13,10 @@ from sta_baseline.datasets.build import build_dataset
 from sta_baseline.utils.type_alias import Split
 
 
-def detection_collate(batch: tuple | list) -> tuple:
+def detection_collate(batch: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
     """Collate function for detection task.
 
-    Concatanate bboxes, labels and metadata from different samples in the first dimension instead of
+    Concatenate bboxes, labels and metadata from different samples in the first dimension instead of
     stacking them to have a batch-size dimension.
 
     Args:
@@ -108,7 +108,7 @@ def construct_loader(cfg: CfgNode, split: Split) -> DataLoader:
     return loader
 
 
-def sta_collate(batch: tuple | list) -> tuple:
+def sta_collate(batch: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
     """Collate function for the short term anticipation task.
 
     Args:

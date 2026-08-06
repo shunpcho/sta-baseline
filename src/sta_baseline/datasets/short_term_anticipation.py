@@ -12,6 +12,7 @@ import lmdb
 import numpy as np
 import numpy.typing as npt
 import torch
+from av import container, frame
 from cv2 import imdecode, imencode, IMREAD_COLOR
 from decord import VideoReader
 from fvcore.common.config import CfgNode
@@ -33,10 +34,10 @@ decord.bridge.set_bridge("torch")
 
 def _get_frames(
     frame_list: list[int],
-    container: av.container.Container,
+    container: container.Container,
     include_audio: bool = False,
     audio_buffer_frames: int = 0,
-) -> list[av.frame.Frame | None]:
+) -> list[frame.Frame | None]:
     if len(frame_list) == 0:
         return []
 
@@ -61,7 +62,7 @@ def _get_frames(
     first_pts = frame_index_to_pts(min(frame_list), video_start, video_pt_diff)
     container.seek(first_pts - audio_buffer_pts, stream=video_stream)
 
-    result: list[av.frame.Frame | None] = [None] * len(frame_list)
+    result: list[frame.Frame | None] = [None] * len(frame_list)
     remaining = set(pts_to_idx.keys())
 
     for frame in container.decode(video=0):
