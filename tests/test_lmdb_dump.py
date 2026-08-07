@@ -29,15 +29,12 @@ def test_dataset(dummy_videos: list[Path], video_name: str) -> None:
     """Test that PyAVSTADataset can be instantiated with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
-            "video_uid": "__",
-            "frame": 1136,
             "clip_uid": "dummy162435",
             "clip_frame": 10,
         }
     ]
     ds = PyAVSTADataset(
-        flag="clip_uid",
-        video_uid=None,
+        clip_uid=None,
         annotations=dummy_annotations,
         path_to_videos=dummy_videos[0].parent,
         existing_keys=[],
@@ -106,15 +103,12 @@ def test_dataloader(dummy_videos: list[Path], video_name: str) -> None:
     """Test that the dataloader can be created with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
-            "video_uid": "__",
-            "frame": 1136,
             "clip_uid": "dummy4587",
             "clip_frame": 10,
         }
     ]
     ds = PyAVSTADataset(
-        flag="clip_uid",
-        video_uid=None,
+        clip_uid=None,
         annotations=dummy_annotations,
         path_to_videos=dummy_videos[0].parent,
         existing_keys=[],
@@ -136,8 +130,6 @@ def test_create_lmdb(dummy_videos: list[Path], video_name: str) -> None:
     """Test that the lmdb can be created with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
-            "video_uid": "__",
-            "frame": 1136,
             "clip_uid": "dummy4587",
             "clip_frame": 10,
         }
@@ -146,8 +138,7 @@ def test_create_lmdb(dummy_videos: list[Path], video_name: str) -> None:
     lmdb_dataset = Ego4DHLMDB(path_to_root=dummy_videos[0].parent)
 
     ds = PyAVSTADataset(
-        flag="clip_uid",
-        video_uid=None,
+        clip_uid=None,
         annotations=dummy_annotations,
         path_to_videos=dummy_videos[0].parent,
         existing_keys=[],
