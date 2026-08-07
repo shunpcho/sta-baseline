@@ -158,7 +158,7 @@ class Ego4DHLMDB:
         self.readonly = readonly
         self.lock = lock
         self.map_size = map_size
-        self.frame_template = frame_template or "{video_id:s}_{frame_number:010d}"
+        self.frame_template = frame_template or "{video_id:s}_{frame_number:07d}"
 
     def _get_parent(self, parent: str) -> lmdb.Environment:
         """Get or create an LMDB environment for the specified parent."""
@@ -303,14 +303,14 @@ class Ego4dShortTermAnticipation(Dataset):
         valid_annotations: list[dict[str, Any]] = []
         skipped = 0
         for ann in annotations:
-            video_id = ann.get("clip_uid")
+            video_id = ann.get("video_uid")
             if isinstance(video_id, str) and video_id in videos:
                 valid_annotations.append(ann)
             else:
                 skipped += 1
 
         if skipped > 0:
-            logger.warning("Skipped %d annotations with missing or unknown clip_uid.", skipped)
+            logger.warning("Skipped %d annotations with missing or unknown video_uid.", skipped)
         self._annotations["annotations"] = valid_annotations
         split_name = getattr(self._split, "value", str(self._split))
         logger.info(
@@ -591,7 +591,8 @@ class Ego4dShortTermAnticipation(Dataset):
             if all(img is not None for img in imgs):
                 if backend == "pytorch":
                     torch_imgs = torch.as_tensor(np.stack(imgs))
-                return torch_imgs
+                    return torch_imgs
+                return imgs
             else:
                 logger.warning("Reading failed. Will retry.")
                 time.sleep(1.0)
@@ -620,10 +621,13 @@ class Ego4dShortTermAnticipation(Dataset):
         uid = ann["uid"]
 
         # get video_id, frame_number, gt_boxes, gt_noun_labels, gt_verb_labels and gt_ttc_targets
-        video_id = ann.get("clip_uid")
+        video_id = ann.get("video_uid")
         if not isinstance(video_id, str) or video_id not in self._annotations["videos"]:
-            raise KeyError(f"Invalid clip_uid in annotation: uid={uid}")
+            raise KeyError(f"Invalid video_uid in annotation: uid={uid}")
         frame_number = ann["frame"]
+
+        clip_uid = ann.get("clip_uid")
+        clip_frame = ann.get("clip_frame")
 
         if "objects" in ann:
             gt_boxes = np.vstack([x["box"] for x in ann["objects"]])
@@ -643,6 +647,8 @@ class Ego4dShortTermAnticipation(Dataset):
         return (
             uid,
             video_id,
+            clip_uid,
+            clip_frame,
             frame_width,
             frame_height,
             frame_number,
@@ -655,7 +661,7 @@ class Ego4dShortTermAnticipation(Dataset):
 
     def _load_detections(self, uid: str) -> tuple[Any, Any, Any]:
         # get the object detections for the current example
-        object_detections = self._obj_detections[uid]
+        object_detections = self._obj_detections.get(uid, [])
 
         if len(object_detections) > 0:
             pred_boxes = np.vstack([x["box"] for x in object_detections])
@@ -728,6 +734,8 @@ class Ego4dShortTermAnticipation(Dataset):
         (
             uid,
             video_id,
+            clip_uid,
+            clip_frame,
             frame_width,
             frame_height,
             frame_number,
@@ -739,7 +747,7 @@ class Ego4dShortTermAnticipation(Dataset):
         ) = self._load_annotations(idx)
         pred_boxes, pred_object_labels, pred_scores = self._load_detections(uid)
 
-        frames = self._load_frames(video_id, frame_number, fps)
+        frames = self._load_frames(clip_uid, clip_frame, fps)
 
         orig_pred_boxes = pred_boxes.copy()
         nn = np.array([frame_width, frame_height] * 2).reshape(1, -1)
@@ -769,7 +777,7 @@ class Ego4dShortTermAnticipation(Dataset):
             gt_boxes = all_boxes[: len(gt_boxes)]
             pred_boxes = all_boxes[len(gt_boxes) :]
 
-            if self._split == "train" and self.cfg.EGO4D_STA.PROPOSAL_APPEND_GT:
+            if self._split == Split.TRAIN and self.cfg.EGO4D_STA.PROPOSAL_APPEND_GT:
                 pred_boxes = np.concatenate([pred_boxes, gt_boxes])
                 orig_pred_boxes = np.concatenate([orig_pred_boxes, orig_gt_boxes])
                 pred_object_labels = np.concatenate([pred_object_labels, gt_noun_labels])
