@@ -16,7 +16,7 @@ class FHOSTA(TypedDict):
 
 
 class FHOSTAInfo(TypedDict):
-    video_metadata: dict[str, FHOVideoMetadata]  # The keys are video ids.
+    video_metadata: FHOVideoMetadata
     year: int
     date_created: str  # format: YYYY-MM-DD
 
