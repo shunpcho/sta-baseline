@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from enum import auto, Enum
+from enum import Enum
 from typing import TypedDict
 
 
 class Split(Enum):
-    TRAIN = auto()
-    VAL = auto()
-    TEST = auto()
+    TRAIN = "train"
+    VAL = "val"
+    TEST = "test"
 
 
 class FHOSTA(TypedDict):
@@ -35,6 +35,7 @@ class FHOSTAAnnotation(TypedDict):
     main_uid: str
     video_uid: str
     frame: int
+    clip_frame: int
     clip_id: int
     clip_uid: str
     action_start_sec: float
