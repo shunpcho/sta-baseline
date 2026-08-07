@@ -59,8 +59,8 @@ class FHOSTAAnnotation(TypedDict):
 
 class ObjectsAnnotation(TypedDict):
     box: list[float]
-    verb_category: int
-    noun_category: int
+    verb_category_id: int
+    noun_category_id: int
     time_to_contact: float
 
 

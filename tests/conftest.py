@@ -18,6 +18,7 @@ import numpy as np
 from sta_baseline.utils.type_alias import (
     FHOSTAInfo,
     ObjectDetectionAnnotation,
+    ObjectsAnnotation,
 )
 
 
@@ -78,6 +79,8 @@ class DummyAnnotation(TypedDict):
     frame: int
     clip_id: int
     clip_uid: str
+    clip_frame: int
+    objects: list[ObjectsAnnotation]
 
 
 def create_dummy_sta_train_json(root_path: Path, sta_train_annotations: DummyFHOSTA) -> Path:
