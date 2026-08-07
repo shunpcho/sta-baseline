@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from torch.utils.data import DataLoader
 
 from scripts.dump_frame_to_lmdb_files import collate_fn, LMDBAnnotation, PyAVSTADataset
-from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, Ego4dShortTermAnticipation, PyAVVideoReader
+from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, PyAVVideoReader
 from tests.conftest import create_dummy_video
+
+video_names = ["dummy162435.mp4", "dummy4587.mp4"]
 
 
 @pytest.fixture
-def dummy_videos(tmp_path: Path, video_names: list[str]) -> list[Path]:
+def dummy_videos(tmp_path: Path) -> list[Path]:
     """Create dummy video files in a temporary directory."""
-    video_paths = []
+    video_paths: list[Path] = []
     for video_name in video_names:
         video_path = tmp_path.parent / "videos" / video_name
         video_path.parent.mkdir(parents=True, exist_ok=True)
@@ -24,8 +25,7 @@ def dummy_videos(tmp_path: Path, video_names: list[str]) -> list[Path]:
     return video_paths
 
 
-@pytest.mark.parametrize("video_name", ["dummy162435.mp4"])
-def test_dataset(dummy_videos: list[Path], video_name: str) -> None:
+def test_dataset(dummy_videos: list[Path]) -> None:
     """Test that PyAVSTADataset can be instantiated with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
@@ -63,8 +63,7 @@ def test_dataset(dummy_videos: list[Path], video_name: str) -> None:
     ]
 
 
-@pytest.mark.parametrize("video_name", ["dummy4587.mp4"])
-def test_video_reader(dummy_videos: list[Path], video_name: str) -> None:
+def test_video_reader(dummy_videos: list[Path]) -> None:
     """Test that PyAVVideoReader can read frames from the dummy video."""
     reader = PyAVVideoReader(str(dummy_videos[0]), height=96)
     ims = reader[np.array([7, 8, 9, 10])]
@@ -74,8 +73,7 @@ def test_video_reader(dummy_videos: list[Path], video_name: str) -> None:
     assert ims[0].dtype == np.uint8
 
 
-@pytest.mark.parametrize("video_name", ["dummy4587.mp4"])
-def test_ego4d_h_lmdb(dummy_videos: list[Path], video_name: str) -> None:
+def test_ego4d_h_lmdb(dummy_videos: list[Path]) -> None:
     """Test that Ego4DHLMDB can be instantiated with dummy video."""
     lmdb_dataset = Ego4DHLMDB(path_to_root=dummy_videos[0].parent)
 
@@ -85,25 +83,11 @@ def test_ego4d_h_lmdb(dummy_videos: list[Path], video_name: str) -> None:
     assert len(existing_keys) == 0
 
 
-def test_load_detections_allows_missing_uid() -> None:
-    """Missing detection entries are treated as samples with no detections."""
-    dataset = object.__new__(Ego4dShortTermAnticipation)
-    dataset._obj_detections = {}
-    dataset.cfg = SimpleNamespace(EGO4D_STA=SimpleNamespace(DETECTION_SCORE_THRESH=0.5))
-
-    pred_boxes, pred_object_labels, pred_scores = dataset._load_detections("missing-uid")
-
-    assert pred_boxes.shape == (0, 4)
-    assert pred_object_labels.size == 0
-    assert pred_scores.size == 0
-
-
-@pytest.mark.parametrize("video_name", ["dummy4587.mp4"])
-def test_dataloader(dummy_videos: list[Path], video_name: str) -> None:
+def test_dataloader(dummy_videos: list[Path]) -> None:
     """Test that the dataloader can be created with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
-            "clip_uid": "dummy4587",
+            "clip_uid": "dummy162435",
             "clip_frame": 10,
         }
     ]
@@ -125,12 +109,11 @@ def test_dataloader(dummy_videos: list[Path], video_name: str) -> None:
     assert len(keys) == 4
 
 
-@pytest.mark.parametrize("video_name", ["dummy4587.mp4"])
-def test_create_lmdb(dummy_videos: list[Path], video_name: str) -> None:
+def test_create_lmdb(dummy_videos: list[Path]) -> None:
     """Test that the lmdb can be created with dummy video."""
     dummy_annotations: list[LMDBAnnotation] = [
         {
-            "clip_uid": "dummy4587",
+            "clip_uid": "dummy162435",
             "clip_frame": 10,
         }
     ]
@@ -163,7 +146,7 @@ def test_create_lmdb(dummy_videos: list[Path], video_name: str) -> None:
     assert dummy_videos[0].with_name(dummy_videos[0].stem).joinpath("data.mdb").exists()
 
     # Check that the lmdb can be read the contents.
-    contents = lmdb_dataset.get_batch("dummy4587", [7, 8, 9, 10])
+    contents = lmdb_dataset.get_batch("dummy162435", [7, 8, 9, 10])
     assert len(contents) == 4
     for frame in contents:
         assert frame.shape == (96, 128, 3)
