@@ -44,7 +44,7 @@ def main() -> None:
     )
     parser.add_argument("--frame_height", type=int, default=320, help="Height of the video frames.")
     parser.add_argument("--num_workers", type=int, default=8, help="Number of worker processes for the DataLoader.")
-    parser.add_argument("--video_uid", type=str, nargs="+", default=None, help="Unique identifier(s) for the video(s).")
+    parser.add_argument("--clip_uid", type=str, nargs="+", default=None, help="Unique identifier(s) for the clip(s).")
 
     args = parser.parse_args()
 
@@ -63,36 +63,27 @@ def main() -> None:
     # Filter annotations
     annotations: list[LMDBAnnotation] = [
         LMDBAnnotation(
-            video_uid=annotation.get("video_uid", ""),
-            frame=annotation.get("frame", 0),
             clip_uid=annotation.get("clip_uid", ""),
             clip_frame=annotation.get("clip_frame", 0),
         )
         for annotation in fho_sta_annotations
+        if annotation.get("clip_uid", "")
     ]
 
-    non_empty_video_uid_count = sum(1 for annotation in annotations if annotation["video_uid"])
     non_empty_clip_uid_count = sum(1 for annotation in annotations if annotation["clip_uid"])
-    unique_video_uids = {annotation["video_uid"] for annotation in annotations if annotation["video_uid"]}
     unique_clip_uids = {annotation["clip_uid"] for annotation in annotations if annotation["clip_uid"]}
     logger.info(
         "Annotation stats: "
         f"annotations={len(annotations)}, "
-        f"video_uid_non_empty={non_empty_video_uid_count}, "
         f"clip_uid_non_empty={non_empty_clip_uid_count}, "
-        f"video_uid={len(unique_video_uids)}, "
         f"clip_uid={len(unique_clip_uids)}"
     )
-
-    # Which 'video_uid' or 'clip_uid' to sample from.
-    flag = "clip_uid" if args.path_to_videos.name == "clips" else "video_uid"
 
     lmdb_store = Ego4DHLMDB(args.path_to_output_lmdbs, frame_template=args.fname_format)
 
     # Define the dataset and dataloader
     dest = PyAVSTADataset(
-        flag=flag,
-        video_uid=args.video_uid,
+        clip_uid=args.clip_uid,
         annotations=annotations,
         path_to_videos=args.path_to_videos,
         existing_keys=lmdb_store.get_existing_keys(),
@@ -114,26 +105,8 @@ def main() -> None:
 
 
 class LMDBAnnotation(TypedDict):
-    video_uid: str
-    frame: int
     clip_uid: str
     clip_frame: int
-
-
-def _get_annotation_video_id(annotation: LMDBAnnotation, flag: str) -> str:
-    if flag == "clip_uid" and "clip_uid" in annotation:
-        return annotation["clip_uid"]
-    if flag == "video_uid" and "video_uid" in annotation:
-        return annotation["video_uid"]
-    raise KeyError(f"Annotation must contain the '{flag}' key")
-
-
-def _get_annotation_frame_number(annotation: Annotation, flag: str) -> int:
-    if flag == "clip_uid" and "clip_frame" in annotation:
-        return annotation["clip_frame"]
-    if flag == "video_uid" and "frame" in annotation:
-        return annotation["frame"]
-    raise KeyError(f"Annotation must contain the frame number for '{flag}'")
 
 
 class LMDBChunk(TypedDict):
@@ -144,8 +117,7 @@ class LMDBChunk(TypedDict):
 class PyAVSTADataset(Dataset[LMDBChunk]):
     def __init__(
         self,
-        flag: str,
-        video_uid: list[str] | None,
+        clip_uid: list[str] | None,
         annotations: list[LMDBAnnotation],
         path_to_videos: Path,
         existing_keys: list[bytes],
@@ -159,8 +131,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         """Initialize the dataset with annotations, video paths, and existing keys.
 
         Args:
-            flag: Either 'clip_uid' or 'video_uid' to determine which identifier to use.
-            video_uid: List of unique video identifiers to filter the annotations.
+            clip_uid: List of unique clip identifiers to filter the annotations.
             annotations: List of annotations for the dataset.
             path_to_videos: Path to the directory containing the video files.
             existing_keys: List of existing keys in the LMDBs to avoid duplicates.
@@ -171,7 +142,7 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
             fname_format: Format string for generating frame keys.
             retry: Number of times to retry loading a video in case of failure.
         """
-        logger.info("Video UID filter: %s", flag)
+        logger.info("Clip UID filter: %s", clip_uid)
         logger.info(
             "Sampling from %d annotations with a temporal context of %.3f seconds",
             len(annotations),
@@ -188,13 +159,13 @@ class PyAVSTADataset(Dataset[LMDBChunk]):
         self.retry = retry
         self.frame_height = frame_height
         self.fname_format = fname_format
-        if video_uid is not None:
-            annotations = [a for a in annotations if _get_annotation_video_id(a, flag) in video_uid]
+        if clip_uid is not None:
+            annotations = [a for a in annotations if a["clip_uid"] in clip_uid]
 
         frames_per_video: dict[str, list[int]] = defaultdict(list)
         for annotation in annotations:
-            video_id = _get_annotation_video_id(annotation, flag)
-            last_frame = _get_annotation_frame_number(annotation, flag)
+            video_id = annotation["clip_uid"]
+            last_frame = annotation["clip_frame"]
             first_frame = np.max([0, last_frame - context_frames + 1])
             frame_numbers = np.arange(first_frame, last_frame + 1)
             frames_per_video[video_id].extend(frame_numbers)
