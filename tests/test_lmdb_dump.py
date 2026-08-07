@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from torch.utils.data import DataLoader
 
 from scripts.dump_frame_to_lmdb_files import collate_fn, LMDBAnnotation, PyAVSTADataset
-from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, PyAVVideoReader
+from sta_baseline.datasets.short_term_anticipation import Ego4DHLMDB, Ego4dShortTermAnticipation, PyAVVideoReader
 from tests.conftest import create_dummy_video
 
 
@@ -85,6 +86,19 @@ def test_ego4d_h_lmdb(dummy_videos: list[Path], video_name: str) -> None:
     # If there are lmdb files, the existing keys should not be empty.
     # In this test, we expect the lmdb files to be empty, so the existing keys should be empty.
     assert len(existing_keys) == 0
+
+
+def test_load_detections_allows_missing_uid() -> None:
+    """Missing detection entries are treated as samples with no detections."""
+    dataset = object.__new__(Ego4dShortTermAnticipation)
+    dataset._obj_detections = {}
+    dataset.cfg = SimpleNamespace(EGO4D_STA=SimpleNamespace(DETECTION_SCORE_THRESH=0.5))
+
+    pred_boxes, pred_object_labels, pred_scores = dataset._load_detections("missing-uid")
+
+    assert pred_boxes.shape == (0, 4)
+    assert pred_object_labels.size == 0
+    assert pred_scores.size == 0
 
 
 @pytest.mark.parametrize("video_name", ["dummy4587.mp4"])
