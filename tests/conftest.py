@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TypedDict
 
 import cv2
 import lmdb
 import numpy as np
 
-from sta_baseline.utils.type_alias import ObjectDetectionAnnotation
+from sta_baseline.utils.type_alias import (
+    FHOSTAInfo,
+    ObjectDetectionAnnotation,
+)
 
 
 def create_dummy_video(movie_path: Path, frames: int = 40) -> None:
@@ -59,5 +63,26 @@ def create_dummy_lmdb(root_path: Path, video_id: str, frame_numbers: list[int], 
     ):
         for frame_number, frame_data in zip(these_keys, these_frames, strict=True):
             txn.put(f"{video_id}_{frame_number:07d}".encode(), cv2.imencode(".jpg", frame_data)[1])
-    assert lmdb_path.exists()
-    return lmdb_path
+    return lmdb_path.parent
+
+
+class DummyFHOSTA(TypedDict):
+    info: FHOSTAInfo
+    annotations: list[DummyAnnotation]
+
+
+class DummyAnnotation(TypedDict):
+    uid: str
+    main_uid: str
+    video_uid: str
+    frame: int
+    clip_id: int
+    clip_uid: str
+
+
+def create_dummy_sta_train_json(root_path: Path, sta_train_annotations: DummyFHOSTA) -> Path:
+    """Create a dummy STA train JSON file for testing."""
+    sta_train_json_path = root_path / "fho_sta_train.json"
+    with sta_train_json_path.open("w", encoding="utf-8") as f:
+        json.dump(sta_train_annotations, f)
+    return sta_train_json_path

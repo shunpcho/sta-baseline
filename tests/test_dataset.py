@@ -5,13 +5,19 @@ import pytest
 from fvcore.common.config import CfgNode
 
 from sta_baseline.datasets.short_term_anticipation import Ego4dShortTermAnticipation
-from sta_baseline.utils.type_alias import ObjectBoxes, Split
-from tests.conftest import create_dummy_json_object_detections, create_dummy_lmdb
+from sta_baseline.utils.type_alias import FHOSTAInfo, FrameInfo, ObjectBoxes, Split
+from tests.conftest import (
+    create_dummy_json_object_detections,
+    create_dummy_lmdb,
+    create_dummy_sta_train_json,
+    DummyFHOSTA,
+)
 
 
 class DummyPaths(NamedTuple):
     lmdb_path: Path
     object_detections_path: Path
+    sta_annotation_path: Path
 
 
 dummy_video_id = "dummy162435"
@@ -23,6 +29,53 @@ dummy_object_detection = {
     f"{dummy_video_id}_0000009": [ObjectBoxes(box=[12.1, 22.2, 32.3, 42.4], score=0.54867634, noun_category_id=91)],
     f"{dummy_video_id}_0000010": [ObjectBoxes(box=[13.1, 23.2, 33.3, 43.4], score=0.64867634, noun_category_id=101)],
 }
+dummy_sta_train_annotations = DummyFHOSTA(
+    info=FHOSTAInfo(
+        video_metadata={
+            dummy_video_id: FrameInfo(
+                frame_width=movie_frame_size[0],
+                frame_height=movie_frame_size[1],
+                fps=30.0,
+            )
+        },
+        year=2024,
+        date_created="2024-06-01",
+    ),
+    annotations=[
+        {
+            "uid": f"{dummy_video_id}_0000007",
+            "main_uid": "dummy_main_1",
+            "video_uid": dummy_video_id,
+            "frame": 1136,
+            "clip_id": 1,
+            "clip_uid": dummy_video_id,
+        },
+        {
+            "uid": f"{dummy_video_id}_0000008",
+            "main_uid": "dummy_main_1",
+            "video_uid": dummy_video_id,
+            "frame": 1136,
+            "clip_id": 1,
+            "clip_uid": dummy_video_id,
+        },
+        {
+            "uid": f"{dummy_video_id}_0000009",
+            "main_uid": "dummy_main_1",
+            "video_uid": dummy_video_id,
+            "frame": 1136,
+            "clip_id": 1,
+            "clip_uid": dummy_video_id,
+        },
+        {
+            "uid": f"{dummy_video_id}_0000010",
+            "main_uid": "dummy_main_1",
+            "video_uid": dummy_video_id,
+            "frame": 1136,
+            "clip_id": 1,
+            "clip_uid": dummy_video_id,
+        },
+    ],
+)
 
 
 @pytest.fixture
@@ -30,7 +83,12 @@ def dummy_lmdb_and_detections(tmp_path: Path) -> DummyPaths:
     """Create a dummy LMDB and object detections for testing."""
     lmdb_path = create_dummy_lmdb(tmp_path, dummy_video_id, frame_numbers=frame_numbers, image_size=movie_frame_size)
     object_detections_path = create_dummy_json_object_detections(tmp_path, dummy_object_detection)
-    return DummyPaths(lmdb_path=lmdb_path, object_detections_path=object_detections_path)
+    sta_annotation_path = create_dummy_sta_train_json(tmp_path, sta_train_annotations=dummy_sta_train_annotations)
+    return DummyPaths(
+        lmdb_path=lmdb_path,
+        object_detections_path=object_detections_path,
+        sta_annotation_path=sta_annotation_path,
+    )
 
 
 def test_sta_dataset(dummy_lmdb_and_detections: DummyPaths) -> None:
@@ -64,11 +122,11 @@ def test_sta_dataset(dummy_lmdb_and_detections: DummyPaths) -> None:
     cfg.EGO4D_STA.RGB_LMDB_DIR = str(dummy_lmdb_and_detections.lmdb_path)
     cfg.EGO4D_STA.VIDEO_LOAD_BACKEND = "lmdb"
     cfg.EGO4D_STA.OBJ_DETECTIONS = str(dummy_lmdb_and_detections.object_detections_path)
-    cfg.EGO4D_STA.ANNOTATION_DIR = "ego4d_data/v2/annotations"
+    cfg.EGO4D_STA.ANNOTATION_DIR = str(dummy_lmdb_and_detections.sta_annotation_path.parent)
     cfg.EGO4D_STA.TRAIN_LISTS = ["fho_sta_train.json"]
     cfg.EGO4D_STA.VAL_LISTS = ["fho_sta_val.json"]
     cfg.EGO4D_STA.TEST_LISTS = ["fho_sta_test_unannotated.json"]
 
     dataset = Ego4dShortTermAnticipation(cfg, split=Split.TRAIN)
 
-    assert len(dataset[0]) == 1
+    assert len(dataset) == 4
