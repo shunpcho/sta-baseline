@@ -10,6 +10,7 @@ from sta_baseline.models.build import build_model
 from sta_baseline.optimizers import lr_scheduler
 from sta_baseline.utils import distributed as du
 from sta_baseline.utils import logging
+from sta_baseline.utils.type_alias import Split
 
 logger = logging.get_logger(__name__)
 
@@ -65,9 +66,9 @@ class VideoTask(LightningModule):
         if self.cfg.SOLVER.ACCELERATOR != "dp":
             du.init_distributed_groups(self.cfg)
 
-        self.train_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "train")
-        self.val_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "val")
-        self.test_loader: DataLoader[Any] = loader.construct_loader(self.cfg, "test")
+        self.train_loader: DataLoader[Any] = loader.construct_loader(self.cfg, Split.TRAIN)
+        self.val_loader: DataLoader[Any] = loader.construct_loader(self.cfg, Split.VAL)
+        self.test_loader: DataLoader[Any] = loader.construct_loader(self.cfg, Split.TEST)
 
     def configure_optimizers(self):
         steps_in_epoch = len(self.train_loader)
