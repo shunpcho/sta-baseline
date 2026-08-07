@@ -62,20 +62,6 @@ Annotation files and the LMDB dataset are required for training.
   dvc pull ego4d_data/v2/annotations
   ```
 
-- Generate COCO-style annotations.
-  - Training annotations
-
-    ```bash
-    mkdir -p short_term_anticipation/annotations
-    python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_train.json short_term_anticipation/annotations/train_coco.json
-    ```
-
-  - Validation annotations
-
-    ```bash
-    python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_val.json short_term_anticipation/annotations/val_coco.json
-    ```
-
 - Download the pretrained SlowFast model.
 
   ```bash
@@ -126,3 +112,19 @@ just dvc_pull_raw_data
 ```bash
 just create_lmdb
 ```
+
+### Pre-training Object Detection
+
+- Generate COCO-style annotations (for use if you run pre-training object detection).
+  - Training annotations
+
+    ```bash
+    mkdir -p short_term_anticipation/annotations
+    python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_train.json short_term_anticipation/annotations/train_coco.json
+    ```
+
+  - Validation annotations
+
+    ```bash
+    python scripts/create_coco_annotations.py ego4d_data/v2/annotations/fho_sta_val.json short_term_anticipation/annotations/val_coco.json
+    ```
