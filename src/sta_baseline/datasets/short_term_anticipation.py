@@ -24,7 +24,7 @@ from sta_baseline.datasets.build import DATASET_REGISTRY
 from sta_baseline.evaluation.sta_evaluate import compute_iou
 from sta_baseline.lib.pytorchvideo.transform_functional import uniform_temporal_subsample
 from sta_baseline.utils import datasets_utils, logging, transform
-from sta_baseline.utils.type_alias import Split
+from sta_baseline.utils.type_alias import Detections, ExtraData, ShortTermAnticipationData, Split
 
 type FrameSequence = int | list[int] | tuple[int, ...] | npt.NDArray[np.int_]
 
@@ -712,7 +712,7 @@ class Ego4dShortTermAnticipation(Dataset):
             video_tensor, boxes = self._images_and_boxes_preprocessing_cv2(frames, boxes=boxes)
         return video_tensor, boxes
 
-    def __getitem__(self, idx: int) -> tuple[Any, ...]:  # noqa: PLR0914
+    def __getitem__(self, idx: int) -> ShortTermAnticipationData:  # noqa: PLR0914
         """Generate corresponding clips, boxes, labels and metadata for given idx.
 
         Args:
@@ -757,13 +757,21 @@ class Ego4dShortTermAnticipation(Dataset):
             video_tensor, pred_boxes = self._preprocess_frames_and_boxes(frames, pred_boxes)
             imgs = datasets_utils.pack_pathway_output(self.cfg, video_tensor)
 
-            extra_data = {
-                "orig_pred_boxes": orig_pred_boxes,
-                "pred_object_scores": pred_scores,
-                "pred_object_labels": pred_object_labels,
-            }
+            extra_data = ExtraData(
+                orig_pred_boxes=orig_pred_boxes,
+                pred_object_scores=pred_scores,
+                pred_object_labels=pred_object_labels,
+                gt_detections=None,
+            )
 
-            return uid, imgs, pred_boxes, np.array([]), np.array([]), extra_data
+            return ShortTermAnticipationData(
+                uid=uid,
+                images=imgs,
+                pred_boxes=pred_boxes,
+                verb_labels=np.array([]),
+                ttc_targets=np.array([]),
+                extra_data=extra_data,
+            )
         else:
             orig_gt_boxes = gt_boxes.copy()
             gt_boxes /= nn
@@ -795,12 +803,12 @@ class Ego4dShortTermAnticipation(Dataset):
 
             next_active_labels = ious >= self.cfg.EGO4D_STA.NAO_IOU_THRESH
 
-            gt_detections = {
-                "boxes": orig_gt_boxes,
-                "nouns": gt_noun_labels,
-                "verbs": gt_verb_labels,
-                "ttcs": gt_ttc_targets,
-            }
+            gt_detections = Detections(
+                boxes=orig_gt_boxes,
+                nouns=gt_noun_labels,
+                verbs=gt_verb_labels,
+                ttcs=gt_ttc_targets,
+            )
 
             imgs = datasets_utils.pack_pathway_output(self.cfg, video_tensor)
 
@@ -816,11 +824,18 @@ class Ego4dShortTermAnticipation(Dataset):
             # set ttc targets related to non next-active objects to NaN
             ttc_targets[~next_active_labels] = np.nan
 
-            extra_data = {
-                "orig_pred_boxes": orig_pred_boxes,
-                "pred_object_scores": pred_scores,
-                "pred_object_labels": pred_object_labels,
-                "gt_detections": gt_detections,
-            }
+            extra_data = ExtraData(
+                orig_pred_boxes=orig_pred_boxes,
+                pred_object_scores=pred_scores,
+                pred_object_labels=pred_object_labels,
+                gt_detections=gt_detections,
+            )
 
-            return (uid, imgs, pred_boxes, verb_labels, ttc_targets, extra_data)
+            return ShortTermAnticipationData(
+                uid=uid,
+                images=imgs,
+                pred_boxes=pred_boxes,
+                verb_labels=verb_labels,
+                ttc_targets=ttc_targets,
+                extra_data=extra_data,
+            )

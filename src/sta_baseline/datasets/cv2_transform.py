@@ -2,12 +2,13 @@ import math
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 
 _LAST_SPATIAL_CROP_INDEX = 2
 _RANDOM_FLIP_PROBABILITY = 0.5
 
 
-def clip_boxes_to_image(boxes: np.ndarray, height: int, width: int) -> np.ndarray:
+def clip_boxes_to_image(boxes: npt.NDArray[np.float32], height: int, width: int) -> npt.NDArray[np.float32]:
     """Clip the boxes with the height and width of the image size.
 
     Args:

@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 import numpy as np
 import torch
+from fvcore.common.config import CfgNode
 from fvcore.nn.precise_bn import get_bn_modules
 
 import sta_baseline.utils.distributed as du
@@ -12,6 +13,7 @@ from sta_baseline.evaluation.sta_evaluate import STAMeanAveragePrecision
 from sta_baseline.models import losses
 from sta_baseline.tasks.video_task import VideoTask
 from sta_baseline.utils import logging, misc
+from sta_baseline.utils.type_alias import ShortTermAnticipationBatch
 
 logger = logging.get_logger(__name__)
 _IGNORE_VERB_LABEL = -100
@@ -24,18 +26,21 @@ def t2a(tensors: Iterable[torch.Tensor]) -> list[np.ndarray]:
 class ShortTermAnticipationTask(VideoTask):
     checkpoint_metric = "val/map_box_noun_verb_ttc_err"
 
-    def __init__(self, cfg):
+    def __init__(self, cfg: CfgNode) -> None:
         super().__init__(cfg)
         del self.loss_fun
         self.verb_loss_fun = losses.get_loss_func(cfg.MODEL.VERB_LOSS_FUNC)(reduction="mean")
         self.ttc_loss_fun = losses.get_loss_func(cfg.MODEL.TTC_LOSS_FUNC)(reduction="mean")
-        self.lossw = cfg.MODEL.STA_LOSS_WEIGHTS
+        self.lossw: list[int] = cfg.MODEL.STA_LOSS_WEIGHTS
         self._train_epoch_outputs = []
         self._val_epoch_outputs = []
         self._test_epoch_outputs = []
 
-    def training_step(self, batch, batch_idx):
-        _, inputs, pred_boxes, verb_labels, ttc_targets, _ = batch
+    def training_step(self, batch: ShortTermAnticipationBatch, batch_idx: int) -> dict[str, float | torch.Tensor]:
+        inputs = batch.images
+        pred_boxes = batch.pred_boxes
+        verb_labels = batch.verb_labels
+        ttc_targets = batch.ttc_targets
 
         # model forward pass
         pred_verb, pred_ttc = self.model.forward(inputs, pred_boxes)

@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data._utils.collate import default_collate  # noqa: PLC2701
 
 from sta_baseline.datasets.build import build_dataset
-from sta_baseline.utils.type_alias import Split
+from sta_baseline.utils.type_alias import ShortTermAnticipationBatch, ShortTermAnticipationData, Split
 
 
 def detection_collate(batch: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
@@ -72,7 +72,7 @@ def _get_collate(task: Literal["detection", "short_term_anticipation"]) -> Calla
     return None
 
 
-def construct_loader(cfg: CfgNode, split: Split) -> DataLoader:
+def construct_loader(cfg: CfgNode, split: Split) -> DataLoader[ShortTermAnticipationBatch]:
     """Constructs the data loader for the given dataset.
 
     Args:
@@ -108,14 +108,14 @@ def construct_loader(cfg: CfgNode, split: Split) -> DataLoader:
     return loader
 
 
-def sta_collate(batch: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
+def sta_collate(batch: list[ShortTermAnticipationData]) -> ShortTermAnticipationBatch:
     """Collate function for the short term anticipation task.
 
     Args:
         batch (tuple or list): data batch to collate.
 
     Returns:
-        (tuple): collated detection data batch.
+        collated short term anticipation data batch.
     """
     eids, inputs, pred_boxes, verb_labels, ttc_targets, extra = zip(*batch, strict=True)
 
@@ -132,4 +132,11 @@ def sta_collate(batch: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
         for k, v in ed.items():
             extra_data[k].append(v)
 
-    return eids, inputs, pred_boxes, verb_labels, ttc_targets, extra_data
+    return ShortTermAnticipationBatch(
+        uids=eids,
+        images=inputs,
+        pred_boxes=pred_boxes,
+        verb_labels=verb_labels,
+        ttc_targets=ttc_targets,
+        extras=extra_data,
+    )

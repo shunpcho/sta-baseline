@@ -2,7 +2,7 @@ from fvcore.common.config import CfgNode
 from fvcore.common.registry import Registry
 from torch.utils.data import Dataset
 
-from sta_baseline.utils.type_alias import Split
+from sta_baseline.utils.type_alias import ShortTermAnticipationData, Split
 
 DATASET_REGISTRY = Registry("DATASET")
 DATASET_REGISTRY.__doc__ = """
@@ -13,7 +13,7 @@ The call should return a `torch.utils.data.Dataset` object.
 """
 
 
-def build_dataset(dataset_name: str, cfg: CfgNode, split: Split) -> Dataset:
+def build_dataset(dataset_name: str, cfg: CfgNode, split: Split) -> Dataset[ShortTermAnticipationData]:
     """Build a dataset, defined by `dataset_name`.
 
     Args:

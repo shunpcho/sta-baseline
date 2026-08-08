@@ -4,6 +4,7 @@
 """Video models."""
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from torch import nn
 
@@ -26,7 +27,7 @@ class ResNetSTARoIHead(nn.Module):
         verb_act_func=(None, "softmax"),
         ttc_act_func=("softplus", "softplus"),
         aligned=True,
-    ):
+    ) -> None:
         """The `__init__` method of any subclass should also contain these arguments.
 
         ResNetRoIHead takes p pathways as input where p in [1, infty].
@@ -151,7 +152,7 @@ class ResNetSTARoIHead(nn.Module):
 
 @MODEL_REGISTRY.register()
 class ShortTermAnticipationResNet(ResNet):
-    def _construct_network(self, cfg):
+    def _construct_network(self, cfg) -> None:
         super()._construct_network(cfg, with_head=False)
 
         width_per_group = cfg.RESNET.WIDTH_PER_GROUP
@@ -174,7 +175,7 @@ class ShortTermAnticipationResNet(ResNet):
 
 @MODEL_REGISTRY.register()
 class ShortTermAnticipationSlowFast(SlowFast):
-    def _construct_network(self, cfg, with_head=False):
+    def _construct_network(self, cfg, with_head=False) -> None:
         super()._construct_network(cfg, with_head=False)
 
         width_per_group = cfg.RESNET.WIDTH_PER_GROUP
@@ -204,8 +205,8 @@ class ShortTermAnticipationSlowFast(SlowFast):
         self.head_name = "headsta"
         self.add_module(self.head_name, head)
 
-    def extract_features(self, x):
-        """Performs feature extraction"""
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Performs feature extraction."""
         x = self.s1(x)
         x = self.s1_fuse(x)
         x = self.s2(x)
@@ -221,8 +222,8 @@ class ShortTermAnticipationSlowFast(SlowFast):
 
         return x
 
-    def pack_boxes(self, bboxes):
-        """Packs images and boxes so that they can be processed in batch"""
+    def pack_boxes(self, bboxes: list[torch.Tensor]) -> torch.Tensor:
+        """Packs images and boxes so that they can be processed in batch."""
         # compute indexes
         idx = torch.from_numpy(np.concatenate([[i] * len(b) for i, b in enumerate(bboxes)]))
 
@@ -273,10 +274,15 @@ class ShortTermAnticipationSlowFast(SlowFast):
 
         return detections, raw_predictions
 
-    def forward(self, videos, bboxes, orig_pred_boxes=None, pred_object_labels=None, pred_object_scores=None):
-        """Expects videos to be a batch of input tensors and bboxes
-        to be a list associated bounding boxes
-        """
+    def forward(
+        self,
+        videos: torch.Tensor,
+        bboxes: list[torch.Tensor],
+        orig_pred_boxes: list[npt.NDArray[np.float32]] | None = None,
+        pred_object_labels: list[npt.NDArray[np.int32]] | None = None,
+        pred_object_scores: list[npt.NDArray[np.float32]] | None = None,
+    ):
+        """Expects videos to be a batch of input tensors and bboxes to be a list associated bounding boxes."""
         packed_bboxes = self.pack_boxes(bboxes)
 
         features = self.extract_features(videos)
