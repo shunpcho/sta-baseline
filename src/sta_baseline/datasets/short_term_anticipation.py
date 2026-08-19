@@ -166,6 +166,10 @@ class Ego4DHLMDB:
             str(self.path_to_root / parent), map_size=self.map_size, readonly=self.readonly, lock=self.lock
         )
 
+    def has_video(self, video_id: str) -> bool:
+        """Return whether an LMDB environment exists for the specified video ID."""
+        return (self.path_to_root / video_id / "data.mdb").is_file()
+
     def put_batch(self, video_id: str, frames: list[int], data: list[npt.NDArray[np.uint8]]) -> None:
         with self._get_parent(video_id) as env, env.begin(write=True) as txn:
             for frame_number, frame_data in zip(frames, data, strict=True):
@@ -304,13 +308,17 @@ class Ego4dShortTermAnticipation(Dataset):
         skipped = 0
         for ann in annotations:
             video_id = ann.get("video_uid")
-            if isinstance(video_id, str) and video_id in videos:
+            clip_uid = ann.get("clip_uid")
+            has_lmdb_clip = self.cfg.EGO4D_STA.VIDEO_LOAD_BACKEND != "lmdb" or (
+                isinstance(clip_uid, str) and self._hlmdb.has_video(clip_uid)
+            )
+            if isinstance(video_id, str) and video_id in videos and has_lmdb_clip:
                 valid_annotations.append(ann)
             else:
                 skipped += 1
 
         if skipped > 0:
-            logger.warning("Skipped %d annotations with missing or unknown video_uid.", skipped)
+            logger.warning("Skipped %d annotations with missing video metadata or clip data.", skipped)
         self._annotations["annotations"] = valid_annotations
         split_name = getattr(self._split, "value", str(self._split))
         logger.info(
