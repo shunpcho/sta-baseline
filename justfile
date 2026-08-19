@@ -14,7 +14,8 @@ train_sta:
     	EGO4D_STA.ANNOTATION_DIR ego4d_data/v2/annotations \
     	EGO4D_STA.RGB_LMDB_DIR data/clip_lmdb \
     	EGO4D_STA.OBJ_DETECTIONS ego4d_data/v2/sta_models/object_detections.json \
-    	OUTPUT_DIR short_term_anticipation/models/slowfast_model/
+    	OUTPUT_DIR short_term_anticipation/models/slowfast_model/ \
+        TRAIN.BATCH_SIZE 8
 
 dvc_pull_raw_data:
     dvc pull ego4d_data/v2/annotations.dvc
