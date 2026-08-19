@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """Loss functions."""
 
 from collections.abc import Callable

@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """Video models."""
 
+import torch
 from torch import nn
 
 from sta_baseline.models.nonlocal_helper import Nonlocal
 
 
-def get_trans_func(name):
+def get_trans_func(name: str) -> type[nn.Module]:
     """Retrieves the transformation module by name."""
     trans_funcs = {
         "bottleneck_transform": BottleneckTransform,
@@ -19,23 +17,9 @@ def get_trans_func(name):
 
 
 class BasicTransform(nn.Module):
-    """Basic transformation: Tx3x3, 1x3x3, where T is the size of temporal kernel."""
+    """Basic transformation: Tx3x3, 1x3x3, where T is the size of temporal kernel.
 
-    def __init__(
-        self,
-        dim_in,
-        dim_out,
-        temp_kernel_size,
-        stride,
-        dim_inner=None,
-        num_groups=1,
-        stride_1x1=None,
-        inplace_relu=True,
-        eps=1e-5,
-        bn_mmt=0.1,
-        norm_module=nn.BatchNorm3d,
-    ):
-        """Args:
+    Args:
         dim_in (int): the channel dimensions of the input.
         dim_out (int): the channel dimension of the output.
         temp_kernel_size (int): the temporal kernel sizes of the middle
@@ -53,7 +37,19 @@ class BasicTransform(nn.Module):
             PyTorch = 1 - BN momentum in Caffe2.
         norm_module (nn.Module): nn.Module for the normalization layer. The
             default is nn.BatchNorm3d.
-        """
+    """
+
+    def __init__(
+        self,
+        dim_in: int,
+        dim_out: int,
+        temp_kernel_size: int,
+        stride: int,
+        inplace_relu: bool = True,
+        eps: float = 1e-5,
+        bn_mmt: float = 0.1,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         super().__init__()
         self.temp_kernel_size = temp_kernel_size
         self._inplace_relu = inplace_relu
@@ -61,7 +57,7 @@ class BasicTransform(nn.Module):
         self._bn_mmt = bn_mmt
         self._construct(dim_in, dim_out, stride, norm_module)
 
-    def _construct(self, dim_in, dim_out, stride, norm_module):
+    def _construct(self, dim_in: int, dim_out: int, stride: int, norm_module: type[nn.Module]) -> None:
         # Tx3x3, BN, ReLU.
         self.a = nn.Conv3d(
             dim_in,
@@ -86,7 +82,7 @@ class BasicTransform(nn.Module):
 
         self.b_bn.transform_final_bn = True
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.a(x)
         x = self.a_bn(x)
         x = self.a_relu(x)
@@ -97,26 +93,9 @@ class BasicTransform(nn.Module):
 
 
 class BottleneckTransform(nn.Module):
-    """Bottleneck transformation: Tx1x1, 1x3x3, 1x1x1, where T is the size of
-    temporal kernel.
-    """
+    """Bottleneck transformation: Tx1x1, 1x3x3, 1x1x1, where T is the size of temporal kernel.
 
-    def __init__(
-        self,
-        dim_in,
-        dim_out,
-        temp_kernel_size,
-        stride,
-        dim_inner,
-        num_groups,
-        stride_1x1=False,
-        inplace_relu=True,
-        eps=1e-5,
-        bn_mmt=0.1,
-        dilation=1,
-        norm_module=nn.BatchNorm3d,
-    ):
-        """Args:
+    Args:
         dim_in (int): the channel dimensions of the input.
         dim_out (int): the channel dimension of the output.
         temp_kernel_size (int): the temporal kernel sizes of the middle
@@ -136,7 +115,23 @@ class BottleneckTransform(nn.Module):
         dilation (int): size of dilation.
         norm_module (nn.Module): nn.Module for the normalization layer. The
             default is nn.BatchNorm3d.
-        """
+    """
+
+    def __init__(
+        self,
+        dim_in: int,
+        dim_out: int,
+        temp_kernel_size: int,
+        stride: int,
+        dim_inner: int,
+        num_groups: int,
+        stride_1x1: bool = False,
+        inplace_relu: bool = True,
+        eps: float = 1e-5,
+        bn_mmt: float = 0.1,
+        dilation: int = 1,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         super().__init__()
         self.temp_kernel_size = temp_kernel_size
         self._inplace_relu = inplace_relu
@@ -145,7 +140,16 @@ class BottleneckTransform(nn.Module):
         self._stride_1x1 = stride_1x1
         self._construct(dim_in, dim_out, stride, dim_inner, num_groups, dilation, norm_module)
 
-    def _construct(self, dim_in, dim_out, stride, dim_inner, num_groups, dilation, norm_module):
+    def _construct(
+        self,
+        dim_in: int,
+        dim_out: int,
+        stride: int,
+        dim_inner: int,
+        num_groups: int,
+        dilation: int,
+        norm_module: type[nn.Module],
+    ) -> None:
         (str1x1, str3x3) = (stride, 1) if self._stride_1x1 else (1, stride)
 
         # Tx1x1, BN, ReLU.
@@ -186,7 +190,7 @@ class BottleneckTransform(nn.Module):
         self.c_bn = norm_module(num_features=dim_out, eps=self._eps, momentum=self._bn_mmt)
         self.c_bn.transform_final_bn = True
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Explicitly forward every layer.
         # Branch2a.
         x = self.a(x)
@@ -205,51 +209,52 @@ class BottleneckTransform(nn.Module):
 
 
 class ResBlock(nn.Module):
-    """Residual block."""
+    """Residual block.
 
-    def __init__(
-        self,
-        dim_in,
-        dim_out,
-        temp_kernel_size,
-        stride,
-        trans_func,
-        dim_inner,
-        num_groups=1,
-        stride_1x1=False,
-        inplace_relu=True,
-        eps=1e-5,
-        bn_mmt=0.1,
-        dilation=1,
-        norm_module=nn.BatchNorm3d,
-    ):
-        """ResBlock class constructs redisual blocks. More details can be found in:
+    ResBlock class constructs redisual blocks. More details can be found in:
             Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
             "Deep residual learning for image recognition."
             https://arxiv.org/abs/1512.03385
-        Args:
-            dim_in (int): the channel dimensions of the input.
-            dim_out (int): the channel dimension of the output.
-            temp_kernel_size (int): the temporal kernel sizes of the middle
-                convolution in the bottleneck.
-            stride (int): the stride of the bottleneck.
-            trans_func (string): transform function to be used to construct the
-                bottleneck.
-            dim_inner (int): the inner dimension of the block.
-            num_groups (int): number of groups for the convolution. num_groups=1
-                is for standard ResNet like networks, and num_groups>1 is for
-                ResNeXt like networks.
-            stride_1x1 (bool): if True, apply stride to 1x1 conv, otherwise
-                apply stride to the 3x3 conv.
-            inplace_relu (bool): calculate the relu on the original input
-                without allocating new memory.
-            eps (float): epsilon for batch norm.
-            bn_mmt (float): momentum for batch norm. Noted that BN momentum in
-                PyTorch = 1 - BN momentum in Caffe2.
-            dilation (int): size of dilation.
-            norm_module (nn.Module): nn.Module for the normalization layer. The
-                default is nn.BatchNorm3d.
-        """
+    Args:
+        dim_in (int): the channel dimensions of the input.
+        dim_out (int): the channel dimension of the output.
+        temp_kernel_size (int): the temporal kernel sizes of the middle
+            convolution in the bottleneck.
+        stride (int): the stride of the bottleneck.
+        trans_func (string): transform function to be used to construct the
+            bottleneck.
+        dim_inner (int): the inner dimension of the block.
+        num_groups (int): number of groups for the convolution. num_groups=1
+            is for standard ResNet like networks, and num_groups>1 is for
+            ResNeXt like networks.
+        stride_1x1 (bool): if True, apply stride to 1x1 conv, otherwise
+            apply stride to the 3x3 conv.
+        inplace_relu (bool): calculate the relu on the original input
+            without allocating new memory.
+        eps (float): epsilon for batch norm.
+        bn_mmt (float): momentum for batch norm. Noted that BN momentum in
+            PyTorch = 1 - BN momentum in Caffe2.
+        dilation (int): size of dilation.
+        norm_module (nn.Module): nn.Module for the normalization layer. The
+            default is nn.BatchNorm3d.
+    """
+
+    def __init__(
+        self,
+        dim_in: int,
+        dim_out: int,
+        temp_kernel_size: int,
+        stride: int,
+        trans_func: str,
+        dim_inner: int,
+        num_groups: int = 1,
+        stride_1x1: bool = False,
+        inplace_relu: bool = True,
+        eps: float = 1e-5,
+        bn_mmt: float = 0.1,
+        dilation: int = 1,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         super().__init__()
         self._inplace_relu = inplace_relu
         self._eps = eps
@@ -270,18 +275,18 @@ class ResBlock(nn.Module):
 
     def _construct(
         self,
-        dim_in,
-        dim_out,
-        temp_kernel_size,
-        stride,
-        trans_func,
-        dim_inner,
-        num_groups,
-        stride_1x1,
-        inplace_relu,
-        dilation,
-        norm_module,
-    ):
+        dim_in: int,
+        dim_out: int,
+        temp_kernel_size: int,
+        stride: int,
+        trans_func: str,
+        dim_inner: int,
+        num_groups: int = 1,
+        stride_1x1: bool = False,
+        inplace_relu: bool = True,
+        dilation: int = 1,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         # Use skip connection with projection if dim or res change.
         if (dim_in != dim_out) or (stride != 1):
             self.branch1 = nn.Conv3d(
@@ -308,7 +313,7 @@ class ResBlock(nn.Module):
         )
         self.relu = nn.ReLU(self._inplace_relu)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if hasattr(self, "branch1"):
             x = self.branch1_bn(self.branch1(x)) + self.branch2(x)
         else:
@@ -318,8 +323,11 @@ class ResBlock(nn.Module):
 
 
 class ResStage(nn.Module):
-    """Stage of 3D ResNet. It expects to have one or more tensors as input for
-    single pathway (C2D, I3D, Slow), and multi-pathway (SlowFast) cases.
+    """Stage of 3D ResNet.
+
+    It expects to have one or more tensors as input for single pathway (C2D, I3D, Slow),
+    and multi-pathway (SlowFast) cases.
+
     More details can be found here:
 
     Christoph Feichtenhofer, Haoqi Fan, Jitendra Malik, and Kaiming He.
@@ -329,25 +337,26 @@ class ResStage(nn.Module):
 
     def __init__(
         self,
-        dim_in,
-        dim_out,
-        stride,
-        temp_kernel_sizes,
-        num_blocks,
-        dim_inner,
-        num_groups,
-        num_block_temp_kernel,
-        nonlocal_inds,
-        nonlocal_group,
-        nonlocal_pool,
-        dilation,
-        instantiation="softmax",
-        trans_func_name="bottleneck_transform",
-        stride_1x1=False,
-        inplace_relu=True,
-        norm_module=nn.BatchNorm3d,
-    ):
+        dim_in: list[int],
+        dim_out: list[int],
+        stride: list[int],
+        temp_kernel_sizes: list[int],
+        num_blocks: list[int],
+        dim_inner: list[int],
+        num_groups: list[int],
+        num_block_temp_kernel: list[int],
+        nonlocal_inds: list[int],
+        nonlocal_group: list[int],
+        nonlocal_pool: list[int],
+        dilation: list[int],
+        instantiation: str = "softmax",
+        trans_func_name: str = "bottleneck_transform",
+        stride_1x1: bool = False,
+        inplace_relu: bool = True,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         """The `__init__` method of any subclass should also contain these arguments.
+
         ResStage builds p streams, where p can be greater or equal to one.
 
         Args:
@@ -437,20 +446,20 @@ class ResStage(nn.Module):
 
     def _construct(
         self,
-        dim_in,
-        dim_out,
-        stride,
-        dim_inner,
-        num_groups,
-        trans_func_name,
-        stride_1x1,
-        inplace_relu,
-        nonlocal_inds,
-        nonlocal_pool,
-        instantiation,
-        dilation,
-        norm_module,
-    ):
+        dim_in: list[int],
+        dim_out: list[int],
+        stride: list[int],
+        dim_inner: list[int],
+        num_groups: list[int],
+        trans_func_name: str,
+        stride_1x1: bool,
+        inplace_relu: bool,
+        nonlocal_inds: list[int],
+        nonlocal_pool: list[int],
+        instantiation: str,
+        dilation: list[int],
+        norm_module: type[nn.Module],
+    ) -> None:
         for pathway in range(self.num_pathways):
             for i in range(self.num_blocks[pathway]):
                 # Retrieve the transformation function.
@@ -480,7 +489,7 @@ class ResStage(nn.Module):
                     )
                     self.add_module(f"pathway{pathway}_nonlocal{i}", nln)
 
-    def forward(self, inputs):
+    def forward(self, inputs: list[torch.Tensor]) -> list[torch.Tensor]:
         output = []
         for pathway in range(self.num_pathways):
             x = inputs[pathway]

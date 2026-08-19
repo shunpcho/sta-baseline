@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 import subprocess
 from collections.abc import Iterable, Iterator
 from typing import cast

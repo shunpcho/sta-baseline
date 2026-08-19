@@ -1,33 +1,30 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
-"""Non-local helper"""
+"""Non-local helper."""
 
 import torch
 from torch import nn
 
 
 class Nonlocal(nn.Module):
-    """Builds Non-local Neural Networks as a generic family of building
-    blocks for capturing long-range dependencies. Non-local Network
-    computes the response at a position as a weighted sum of the
-    features at all positions. This building block can be plugged into
-    many computer vision architectures.
+    """Builds Non-local Neural Networks as a generic family of building blocks for capturing long-range dependencies.
+
+    Non-local Network computes the response at a position as a weighted sum of the
+    features at all positions. This building block can be plugged into many computer vision architectures.
     More details in the paper: https://arxiv.org/pdf/1711.07971.pdf
     """
 
     def __init__(
         self,
-        dim,
-        dim_inner,
-        pool_size=None,
-        instantiation="softmax",
-        zero_init_final_conv=False,
-        zero_init_final_norm=True,
-        norm_eps=1e-5,
-        norm_momentum=0.1,
-        norm_module=nn.BatchNorm3d,
-    ):
+        dim: int,
+        dim_inner: int,
+        pool_size: list[int] | None = None,
+        instantiation: str = "softmax",
+        zero_init_final_conv: bool = False,
+        zero_init_final_norm: bool = True,
+        norm_eps: float = 1e-5,
+        norm_momentum: float = 0.1,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
+        super().__init__()
         """Args:
         dim (int): number of dimension for the input.
         dim_inner (int): number of dimension inside of the Non-local block.
@@ -56,7 +53,9 @@ class Nonlocal(nn.Module):
         self.norm_momentum = norm_momentum
         self._construct_nonlocal(zero_init_final_conv, zero_init_final_norm, norm_module)
 
-    def _construct_nonlocal(self, zero_init_final_conv, zero_init_final_norm, norm_module):
+    def _construct_nonlocal(
+        self, zero_init_final_conv: bool, zero_init_final_norm: bool, norm_module: type[nn.Module]
+    ) -> None:
         # Three convolution heads: theta, phi, and g.
         self.conv_theta = nn.Conv3d(self.dim, self.dim_inner, kernel_size=1, stride=1, padding=0)
         self.conv_phi = nn.Conv3d(self.dim, self.dim_inner, kernel_size=1, stride=1, padding=0)
@@ -76,7 +75,7 @@ class Nonlocal(nn.Module):
         if self.use_pool:
             self.pool = nn.MaxPool3d(kernel_size=self.pool_size, stride=self.pool_size, padding=[0, 0, 0])
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_identity = x
         N, C, T, H, W = x.size()
 

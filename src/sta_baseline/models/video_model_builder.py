@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """Video models."""
 
+import math
 import operator
 from functools import partial, reduce
 
-import numpy
+import numpy as np
 import torch
+from fvcore.common.config import CfgNode
 from torch import nn
 from torch.nn.init import trunc_normal_
 
@@ -77,23 +76,12 @@ _POOL1 = {
 
 
 class FuseFastToSlow(nn.Module):
-    """Fuses the information from the Fast pathway to the Slow pathway. Given the
-    tensors from Slow pathway and Fast pathway, fuse information from Fast to
-    Slow, then return the fused tensors from Slow and Fast pathway in order.
-    """
+    """Fuses the information from the Fast pathway to the Slow pathway.
 
-    def __init__(
-        self,
-        dim_in,
-        fusion_conv_channel_ratio,
-        fusion_kernel,
-        alpha,
-        eps=1e-5,
-        bn_mmt=0.1,
-        inplace_relu=True,
-        norm_module=nn.BatchNorm3d,
-    ):
-        """Args:
+    Given the tensors from Slow pathway and Fast pathway, fuse information from Fast to
+    Slow, then return the fused tensors from Slow and Fast pathway in order.
+
+    Args:
         dim_in (int): the channel dimension of the input.
         fusion_conv_channel_ratio (int): channel ratio for the convolution
             used to fuse from Fast pathway to Slow pathway.
@@ -107,7 +95,19 @@ class FuseFastToSlow(nn.Module):
             input without allocating new memory.
         norm_module (nn.Module): nn.Module for the normalization layer. The
             default is nn.BatchNorm3d.
-        """
+    """
+
+    def __init__(
+        self,
+        dim_in: int,
+        fusion_conv_channel_ratio: int,
+        fusion_kernel: int,
+        alpha: int,
+        eps: float = 1e-5,
+        bn_mmt: float = 0.1,
+        inplace_relu: bool = True,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         super().__init__()
         self.conv_f2s = nn.Conv3d(
             dim_in,
@@ -120,7 +120,7 @@ class FuseFastToSlow(nn.Module):
         self.bn = norm_module(num_features=dim_in * fusion_conv_channel_ratio, eps=eps, momentum=bn_mmt)
         self.relu = nn.ReLU(inplace_relu)
 
-    def forward(self, x):
+    def forward(self, x: list[torch.Tensor]) -> list[torch.Tensor]:
         x_s = x[0]
         x_f = x[1]
         fuse = self.conv_f2s(x_f)
@@ -139,13 +139,13 @@ class SlowFast(nn.Module):
     https://arxiv.org/pdf/1812.03982.pdf
     """
 
-    def __init__(self, cfg, with_head=True):
-        """The `__init__` method of any subclass should also contain these
-            arguments.
+    def __init__(self, cfg: CfgNode, with_head: bool = True) -> None:
+        """The `__init__` method of any subclass should also contain these arguments.
 
         Args:
             cfg (CfgNode): model building configs, details are in the
                 comments of the config file.
+            with_head (bool): if True, construct the head of the model.
         """
         super().__init__()
         self.norm_module = get_norm(cfg)
@@ -154,18 +154,18 @@ class SlowFast(nn.Module):
         self._construct_network(cfg, with_head=with_head)
         init_helper.init_weights(self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN)
 
-    def _construct_network(self, cfg, with_head=True):
-        """Builds a SlowFast model. The first pathway is the Slow pathway and the
-            second pathway is the Fast pathway.
+    def _construct_network(self, cfg: CfgNode, with_head: bool = True) -> None:
+        """Builds a SlowFast model. The first pathway is the Slow pathway and the second pathway is the Fast pathway.
 
         Args:
             cfg (CfgNode): model building configs, details are in the
                 comments of the config file.
+            with_head (bool): if True, construct the head of the model.
         """
-        assert cfg.MODEL.ARCH in _POOL1.keys()
+        assert cfg.MODEL.ARCH in _POOL1
         pool_size = _POOL1[cfg.MODEL.ARCH]
         assert len({len(pool_size), self.num_pathways}) == 1
-        assert cfg.RESNET.DEPTH in _MODEL_STAGE_DEPTH.keys()
+        assert cfg.RESNET.DEPTH in _MODEL_STAGE_DEPTH
 
         (d2, d3, d4, d5) = _MODEL_STAGE_DEPTH[cfg.RESNET.DEPTH]
 
@@ -364,7 +364,9 @@ class SlowFast(nn.Module):
         self.head_name = "head"
         self.add_module(self.head_name, head)
 
-    def forward(self, x, bboxes=None):
+    def forward(
+        self, x: torch.Tensor | list[torch.Tensor], bboxes: torch.Tensor | None = None
+    ) -> torch.Tensor | list[torch.Tensor]:
         x = self.s1(x)
         x = self.s1_fuse(x)
         x = self.s2(x)
@@ -380,17 +382,13 @@ class SlowFast(nn.Module):
 
         if hasattr(self, "head_name"):
             head = getattr(self, self.head_name)
-            if self.enable_detection:
-                x = head(x, bboxes)
-            else:
-                x = head(x)
+            x = head(x, bboxes) if self.enable_detection else head(x)
         return x
 
 
 @MODEL_REGISTRY.register()
 class ResNet(nn.Module):
-    """ResNet model builder. It builds a ResNet like network backbone without
-    lateral connection (C2D, I3D, Slow).
+    """ResNet model builder. It builds a ResNet like network backbone without lateral connection (C2D, I3D, Slow).
 
     Christoph Feichtenhofer, Haoqi Fan, Jitendra Malik, and Kaiming He.
     "SlowFast networks for video recognition."
@@ -401,13 +399,13 @@ class ResNet(nn.Module):
     https://arxiv.org/pdf/1711.07971.pdf
     """
 
-    def __init__(self, cfg, with_head=True):
-        """The `__init__` method of any subclass should also contain these
-            arguments.
+    def __init__(self, cfg: CfgNode, with_head: bool = True) -> None:
+        """The `__init__` method of any subclass should also contain these arguments.
 
         Args:
             cfg (CfgNode): model building configs, details are in the
                 comments of the config file.
+            with_head (bool): if True, construct the head of the model.
         """
         super().__init__()
         self.norm_module = get_norm(cfg)
@@ -416,17 +414,18 @@ class ResNet(nn.Module):
         self._construct_network(cfg, with_head=with_head)
         init_helper.init_weights(self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN)
 
-    def _construct_network(self, cfg, with_head=True):
+    def _construct_network(self, cfg: CfgNode, with_head: bool = True) -> None:
         """Builds a single pathway ResNet model.
 
         Args:
             cfg (CfgNode): model building configs, details are in the
                 comments of the config file.
+            with_head (bool): if True, construct the head of the model.
         """
-        assert cfg.MODEL.ARCH in _POOL1.keys()
+        assert cfg.MODEL.ARCH in _POOL1
         pool_size = _POOL1[cfg.MODEL.ARCH]
         assert len({len(pool_size), self.num_pathways}) == 1
-        assert cfg.RESNET.DEPTH in _MODEL_STAGE_DEPTH.keys()
+        assert cfg.RESNET.DEPTH in _MODEL_STAGE_DEPTH
 
         (d2, d3, d4, d5) = _MODEL_STAGE_DEPTH[cfg.RESNET.DEPTH]
 
@@ -565,7 +564,9 @@ class ResNet(nn.Module):
         self.head_name = "head"
         self.add_module(self.head_name, head)
 
-    def forward(self, x, bboxes=None):
+    def forward(
+        self, x: torch.Tensor | list[torch.Tensor], bboxes: torch.Tensor | None = None
+    ) -> torch.Tensor | list[torch.Tensor]:
         x = self.s1(x)
         x = self.s2(x)
         for pathway in range(self.num_pathways):
@@ -577,17 +578,14 @@ class ResNet(nn.Module):
 
         if hasattr(self, "head_name"):
             head = getattr(self, self.head_name)
-            if self.enable_detection:
-                x = head(x, bboxes)
-            else:
-                x = head(x)
+            x = head(x, bboxes) if self.enable_detection else head(x)
 
         return x
 
 
-def is_detection_enabled(cfg):
+def is_detection_enabled(cfg: CfgNode) -> bool:
     try:
-        detection_enabled = cfg.DATA.TASK == "detection" or cfg.DATA.TASK == "short_term_anticipation"
+        detection_enabled = cfg.DATA.TASK in {"detection", "short_term_anticipation"}
     except Exception:
         # Temporary default config while still using old models without this config option
         detection_enabled = False
@@ -597,12 +595,13 @@ def is_detection_enabled(cfg):
 
 @MODEL_REGISTRY.register()
 class MViT(nn.Module):
-    """Multiscale Vision Transformers
+    """Multiscale Vision Transformers.
+
     Haoqi Fan, Bo Xiong, Karttikeya Mangalam, Yanghao Li, Zhicheng Yan, Jitendra Malik, Christoph Feichtenhofer
     https://arxiv.org/abs/2104.11227
     """
 
-    def __init__(self, cfg, with_head=True):
+    def __init__(self, cfg: CfgNode, with_head: bool = True) -> None:
 
         super().__init__()
         # Get parameters.
@@ -854,25 +853,25 @@ class MViT(nn.Module):
 class MultiScaleAttention(nn.Module):
     def __init__(
         self,
-        dim,
-        input_size,
-        pool_first,
-        num_heads=8,
-        qkv_bias=False,
-        drop_rate=0.0,
-        kernel_q=(1, 1, 1),
-        kernel_kv=(1, 1, 1),
-        stride_q=(1, 1, 1),
-        stride_kv=(1, 1, 1),
-        norm_layer=nn.LayerNorm,
-        has_cls_embed=True,
+        dim: int,
+        input_size: tuple[int, int, int],
+        pool_first: bool,
+        num_heads: int = 8,
+        qkv_bias: bool = False,
+        drop_rate: float = 0.0,
+        kernel_q: tuple[int, int, int] = (1, 1, 1),
+        kernel_kv: tuple[int, int, int] = (1, 1, 1),
+        stride_q: tuple[int, int, int] = (1, 1, 1),
+        stride_kv: tuple[int, int, int] = (1, 1, 1),
+        norm_layer: type[nn.Module] = nn.LayerNorm,
+        has_cls_embed: bool = True,
         # Options include `conv`, `avg`, and `max`.
-        mode="conv",
+        mode: str = "conv",
         # If True, perform pool before projection.
-        rel_pos_spatial=False,
-        rel_pos_temporal=False,
-        cfg=None,
-    ):
+        rel_pos_spatial: bool = False,
+        rel_pos_temporal: bool = False,
+        cfg: CfgNode | None = None,
+    ) -> None:
         super().__init__()
         self.pool_first = pool_first
         self.cfg = cfg
@@ -892,19 +891,19 @@ class MultiScaleAttention(nn.Module):
         if drop_rate > 0.0:
             self.proj_drop = nn.Dropout(drop_rate)
         # Skip pooling with kernel and stride size of (1, 1, 1).
-        if numpy.prod(kernel_q) == 1 and numpy.prod(stride_q) == 1:
+        if np.prod(kernel_q) == 1 and np.prod(stride_q) == 1:
             kernel_q = ()
-        if numpy.prod(kernel_kv) == 1 and numpy.prod(stride_kv) == 1:
+        if np.prod(kernel_kv) == 1 and np.prod(stride_kv) == 1:
             kernel_kv = ()
         self.mask = None
         self.mode = mode
 
-        if mode in ("avg", "max"):
+        if mode in {"avg", "max"}:
             pool_op = nn.MaxPool3d if mode == "max" else nn.AvgPool3d
             self.pool_q = pool_op(kernel_q, stride_q, padding_q, ceil_mode=False) if len(kernel_q) > 0 else None
             self.pool_k = pool_op(kernel_kv, stride_kv, padding_kv, ceil_mode=False) if len(kernel_kv) > 0 else None
             self.pool_v = pool_op(kernel_kv, stride_kv, padding_kv, ceil_mode=False) if len(kernel_kv) > 0 else None
-        elif mode == "conv" or mode == "conv_unshared":
+        elif mode in {"conv", "conv_unshared"}:
             dim_conv = head_dim if mode == "conv" else dim
             self.pool_q = (
                 nn.Conv3d(
@@ -968,13 +967,10 @@ class MultiScaleAttention(nn.Module):
             # if not cfg.TRAIN.CHECKPOINT_IN_INIT:
             #     trunc_normal_(self.rel_pos_t, std=0.02)
 
-    def forward(self, x, thw_shape):
+    def forward(self, x: torch.Tensor, thw_shape: list[int]) -> tuple[torch.Tensor, list[torch.Tensor | int]]:
         B, N, C = x.shape
         if self.pool_first:
-            if self.mode == "conv_unshared":
-                fold_dim = 1
-            else:
-                fold_dim = self.num_heads
+            fold_dim = 1 if self.mode == "conv_unshared" else self.num_heads
             x = x.reshape(B, N, fold_dim, C // fold_dim).permute(0, 2, 1, 3)
             q = k = v = x
         else:
@@ -1021,9 +1017,9 @@ class MultiScaleAttention(nn.Module):
         )
 
         if self.pool_first:
-            q_N = numpy.prod(q_shape) + 1 if self.has_cls_embed else numpy.prod(q_shape)
-            k_N = numpy.prod(k_shape) + 1 if self.has_cls_embed else numpy.prod(k_shape)
-            v_N = numpy.prod(v_shape) + 1 if self.has_cls_embed else numpy.prod(v_shape)
+            q_N = np.prod(q_shape) + 1 if self.has_cls_embed else np.prod(q_shape)
+            k_N = np.prod(k_shape) + 1 if self.has_cls_embed else np.prod(k_shape)
+            v_N = np.prod(v_shape) + 1 if self.has_cls_embed else np.prod(v_shape)
 
             q = q.permute(0, 2, 1, 3).reshape(B, q_N, C)
             q = self.q(q).reshape(B, q_N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
@@ -1063,28 +1059,27 @@ class MultiScaleAttention(nn.Module):
 class MultiScaleBlock(nn.Module):
     def __init__(
         self,
-        dim,
-        dim_out,
-        num_heads,
-        input_size,
-        pool_first,
-        mlp_ratio=4.0,
-        qkv_bias=False,
-        qk_scale=None,
-        drop_rate=0.0,
-        drop_path=0.0,
-        act_layer=nn.GELU,
-        norm_layer=nn.LayerNorm,
-        up_rate=None,
-        kernel_q=(1, 1, 1),
-        kernel_kv=(1, 1, 1),
-        stride_q=(1, 1, 1),
-        stride_kv=(1, 1, 1),
-        mode="conv",
-        has_cls_embed=True,
-        rel_pos_spatial=False,
-        rel_pos_temporal=False,
-    ):
+        dim: int,
+        dim_out: int,
+        num_heads: int,
+        input_size: tuple[int, int, int],
+        pool_first: bool,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = False,
+        drop_rate: float = 0.0,
+        drop_path: float = 0.0,
+        act_layer: type[nn.Module] = nn.GELU,
+        norm_layer: type[nn.Module] = nn.LayerNorm,
+        up_rate: float | None = None,
+        kernel_q: tuple[int, int, int] = (1, 1, 1),
+        kernel_kv: tuple[int, int, int] = (1, 1, 1),
+        stride_q: tuple[int, int, int] = (1, 1, 1),
+        stride_kv: tuple[int, int, int] = (1, 1, 1),
+        mode: str = "conv",
+        has_cls_embed: bool = True,
+        rel_pos_spatial: bool = False,
+        rel_pos_temporal: bool = False,
+    ) -> None:
         super().__init__()
         self.dim = dim
         self.dim_out = dim_out
@@ -1114,10 +1109,7 @@ class MultiScaleBlock(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.has_cls_embed = has_cls_embed
         # TODO: check the use case for up_rate, and merge the following lines
-        if up_rate is not None and up_rate > 1:
-            mlp_dim_out = dim * up_rate
-        else:
-            mlp_dim_out = dim_out
+        mlp_dim_out = dim_out * up_rate if up_rate is not None and up_rate > 1 else dim_out
         self.mlp = Mlp(
             in_features=dim,
             hidden_features=mlp_hidden_dim,
@@ -1144,9 +1136,9 @@ class MultiScaleBlock(nn.Module):
         return x, thw_shape_new
 
 
-def drop_path(x, drop_prob: float = 0.0, training: bool = False):
+def drop_path(x: torch.Tensor, drop_prob: float = 0.0, training: bool = False) -> torch.Tensor:
     """Stochastic Depth per sample."""
-    if drop_prob == 0.0 or not training:
+    if math.isclose(drop_prob, 0.0, abs_tol=1e-8) or not training:
         return x
     keep_prob = 1 - drop_prob
     shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
@@ -1159,23 +1151,23 @@ def drop_path(x, drop_prob: float = 0.0, training: bool = False):
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
 
-    def __init__(self, drop_prob=None):
+    def __init__(self, drop_prob: float | None = None) -> None:
         super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return drop_path(x, self.drop_prob, self.training)
 
 
 class Mlp(nn.Module):
     def __init__(
         self,
-        in_features,
-        hidden_features=None,
-        out_features=None,
-        act_layer=nn.GELU,
-        drop_rate=0.0,
-    ):
+        in_features: int,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
+        act_layer: type[nn.Module] = nn.GELU,
+        drop_rate: float = 0.0,
+    ) -> None:
         super().__init__()
         self.drop_rate = drop_rate
         out_features = out_features or in_features
@@ -1186,7 +1178,7 @@ class Mlp(nn.Module):
         if self.drop_rate > 0.0:
             self.drop = nn.Dropout(drop_rate)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.fc1(x)
         x = self.act(x)
         if self.drop_rate > 0.0:
@@ -1202,18 +1194,15 @@ class PatchEmbed(nn.Module):
 
     def __init__(
         self,
-        dim_in=3,
-        dim_out=768,
-        kernel=(1, 16, 16),
-        stride=(1, 4, 4),
-        padding=(1, 7, 7),
-        conv_2d=False,
-    ):
+        dim_in: int = 3,
+        dim_out: int = 768,
+        kernel: tuple[int, int, int] = (1, 16, 16),
+        stride: tuple[int, int, int] = (1, 4, 4),
+        padding: tuple[int, int, int] = (1, 7, 7),
+        conv_2d: bool = False,
+    ) -> None:
         super().__init__()
-        if conv_2d:
-            conv = nn.Conv2d
-        else:
-            conv = nn.Conv3d
+        conv = nn.Conv2d if conv_2d else nn.Conv3d
         self.proj = conv(
             dim_in,
             dim_out,
@@ -1222,13 +1211,13 @@ class PatchEmbed(nn.Module):
             padding=padding,
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
         # B C (T) H W -> B (T)HW C
         return x.flatten(2).transpose(1, 2)
 
 
-def round_width(width, multiplier, min_width=1, divisor=1, verbose=False):
+def round_width(width: int, multiplier: float, min_width: int = 1, divisor: int = 1, verbose: bool = False) -> int:
     if not multiplier:
         return width
     width *= multiplier
@@ -1249,11 +1238,11 @@ class TransformerBasicHead(nn.Module):
 
     def __init__(
         self,
-        dim_in,
-        num_classes,
-        dropout_rate=0.0,
-        act_func="softmax",
-    ):
+        dim_in: int,
+        num_classes: int,
+        dropout_rate: float = 0.0,
+        act_func: str = "softmax",
+    ) -> None:
         """Perform linear projection and activation as head for tranformers.
 
         Args:
@@ -1287,7 +1276,7 @@ class TransformerBasicHead(nn.Module):
         else:
             raise NotImplementedError(f"{act_func} is not supported as an activationfunction.")
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if hasattr(self, "dropout"):
             x = self.dropout(x)
         x = self.projection(x)
@@ -1297,7 +1286,9 @@ class TransformerBasicHead(nn.Module):
         return x
 
 
-def attention_pool(tensor, pool, thw_shape, has_cls_embed=True, norm=None):
+def attention_pool(
+    tensor: torch.Tensor, pool, thw_shape: list[int], has_cls_embed: bool = True, norm=None
+) -> tuple[torch.Tensor, list[torch.Tensor | int]]:
     if pool is None:
         return tensor, thw_shape
     tensor_dim = tensor.ndim
@@ -1311,7 +1302,7 @@ def attention_pool(tensor, pool, thw_shape, has_cls_embed=True, norm=None):
     if has_cls_embed:
         cls_tok, tensor = tensor[:, :, :1, :], tensor[:, :, 1:, :]
 
-    B, N, L, C = tensor.shape
+    B, N, _, C = tensor.shape
     T, H, W = thw_shape
     tensor = tensor.reshape(B * N, T, H, W, C).permute(0, 4, 1, 2, 3).contiguous()
 
@@ -1336,23 +1327,33 @@ def _contract(*args):
     return opt_einsum.contract(*args, backend="torch")
 
 
-def get_rel_pos(rel_pos, d):
+def get_rel_pos(rel_pos: torch.Tensor, d: int) -> torch.Tensor:
     if isinstance(d, int):
         ori_d = rel_pos.shape[0]
         if ori_d == d:
             return rel_pos
         else:
             # Interpolate rel pos.
-            new_pos_embed = F.interpolate(
+            new_pos_embed = nn.functional.interpolate(
                 rel_pos.reshape(1, ori_d, -1).permute(0, 2, 1),
                 size=d,
                 mode="linear",
             )
 
             return new_pos_embed.reshape(-1, d).permute(1, 0)
+    else:
+        raise TypeError(f"Unsupported type {type(d)} for d. Expected int.")
 
 
-def cal_rel_pos_spatial(attn, q, has_cls_embed, q_shape, k_shape, rel_pos_h, rel_pos_w):
+def cal_rel_pos_spatial(
+    attn: torch.Tensor,
+    q: torch.Tensor,
+    has_cls_embed: bool,
+    q_shape: tuple[int, int, int],
+    k_shape: tuple[int, int, int],
+    rel_pos_h: torch.Tensor,
+    rel_pos_w: torch.Tensor,
+) -> torch.Tensor:
     sp_idx = 1 if has_cls_embed else 0
     q_t, q_h, q_w = q_shape
     k_t, k_h, k_w = k_shape
@@ -1422,7 +1423,14 @@ def cal_rel_pos_spatial(attn, q, has_cls_embed, q_shape, k_shape, rel_pos_h, rel
     return attn
 
 
-def cal_rel_pos_temporal(attn, q, has_cls_embed, q_shape, k_shape, rel_pos_t):
+def cal_rel_pos_temporal(
+    attn: torch.Tensor,
+    q: torch.Tensor,
+    has_cls_embed: bool,
+    q_shape: tuple[int, int, int],
+    k_shape: tuple[int, int, int],
+    rel_pos_t: torch.Tensor,
+) -> torch.Tensor:
     sp_idx = 1 if has_cls_embed else 0
     q_t, q_h, q_w = q_shape
     k_t, k_h, k_w = k_shape

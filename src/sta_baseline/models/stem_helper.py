@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """ResNe(X)t 3D stem helper."""
 
 import torch
@@ -8,7 +5,10 @@ from torch import nn
 
 
 class VideoModelStem(nn.Module):
-    """Video 3D stem module. Provides stem operations of Conv, BN, ReLU, MaxPool on input data tensor for one or multiple pathways."""
+    """Video 3D stem module.
+
+    Provides stem operations of Conv, BN, ReLU, MaxPool on input data tensor for one or multiple pathways.
+    """
 
     def __init__(
         self,
@@ -20,7 +20,7 @@ class VideoModelStem(nn.Module):
         inplace_relu: bool = True,
         eps: float = 1e-5,
         bn_mmt: float = 0.1,
-        norm_module: nn.Module = nn.BatchNorm3d,
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
     ) -> None:
         """The `__init__` method of any subclass should also contain these arguments.
 
@@ -62,7 +62,7 @@ class VideoModelStem(nn.Module):
         # Construct the stem layer.
         self._construct_stem(dim_in, dim_out, norm_module)
 
-    def _construct_stem(self, dim_in: list[int], dim_out: list[int], norm_module: nn.Module) -> None:
+    def _construct_stem(self, dim_in: list[int], dim_out: list[int], norm_module: type[nn.Module]) -> None:
         for pathway in range(len(dim_in)):
             stem = ResNetBasicStem(
                 dim_in[pathway],
@@ -101,8 +101,8 @@ class ResNetBasicStem(nn.Module):
         inplace_relu: bool = True,
         eps: float = 1e-5,
         bn_mmt: float = 0.1,
-        norm_module: nn.Module = nn.BatchNorm3d,
-    ):
+        norm_module: type[nn.Module] = nn.BatchNorm3d,
+    ) -> None:
         """The `__init__` method of any subclass should also contain these arguments.
 
         Args:
@@ -116,7 +116,7 @@ class ResNetBasicStem(nn.Module):
             stride (list): the stride size of the convolution in the stem layer.
                 temporal kernel stride, height kernel size, width kernel size in
                 order.
-            padding (int): the padding size of the convolution in the stem
+            padding (list): the padding size of the convolution in the stem
                 layer, temporal padding size, height padding size, width
                 padding size in order.
             inplace_relu (bool): calculate the relu on the original input
@@ -137,7 +137,7 @@ class ResNetBasicStem(nn.Module):
         # Construct the stem layer.
         self._construct_stem(dim_in, dim_out, norm_module)
 
-    def _construct_stem(self, dim_in: int, dim_out: int, norm_module: nn.Module) -> None:
+    def _construct_stem(self, dim_in: int, dim_out: int, norm_module: type[nn.Module]) -> None:
         self.conv = nn.Conv3d(
             dim_in,
             dim_out,

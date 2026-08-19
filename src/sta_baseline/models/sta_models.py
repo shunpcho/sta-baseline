@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """Video models."""
 
 import numpy as np
@@ -18,15 +15,15 @@ class ResNetSTARoIHead(nn.Module):
 
     def __init__(
         self,
-        dim_in,
-        num_verbs,
-        pool_size,
-        resolution,
-        scale_factor,
-        dropout_rate=0.0,
-        verb_act_func=(None, "softmax"),
-        ttc_act_func=("softplus", "softplus"),
-        aligned=True,
+        dim_in: list[int],
+        num_verbs: int,
+        pool_size: list[list[int]],
+        resolution: list[int],
+        scale_factor: list[float],
+        dropout_rate: float = 0.0,
+        verb_act_func: tuple[str | None, str] | None = (None, "softmax"),
+        ttc_act_func: tuple[str, str] | None = ("softplus", "softplus"),
+        aligned: bool = True,
     ) -> None:
         """The `__init__` method of any subclass should also contain these arguments.
 
@@ -45,8 +42,10 @@ class ResNetSTARoIHead(nn.Module):
                 number.
             dropout_rate (float): dropout rate. If equal to 0.0, perform no
                 dropout.
-            act_func (string): activation function to use. 'softmax': applies
+            verb_act_func (tuple[str | None, str] | None): activation function for verbs. 'softmax': applies
                 softmax on the output. 'sigmoid': applies sigmoid on the output.
+            ttc_act_func (tuple[str, str] | None): activation function for time-to-contact. 'softplus': applies
+                softplus on the output.
             aligned (bool): if False, use the legacy implementation. If True,
                 align the results more perfectly.
 
@@ -90,7 +89,7 @@ class ResNetSTARoIHead(nn.Module):
         self.verb_projection = nn.Linear(sum(dim_in), num_verbs + 1, bias=True)
         self.ttc_projection = nn.Linear(sum(dim_in), 1, bias=True)
 
-        def get_act(act_func):
+        def get_act(act_func: str | None) -> nn.Module | None:
             # Softmax for evaluation and testing.
             if act_func == "softmax":
                 act = nn.Softmax(dim=1)
@@ -234,13 +233,20 @@ class ShortTermAnticipationSlowFast(SlowFast):
 
         return bboxes
 
-    def postprocess(self, pred_boxes, pred_object_labels, pred_object_scores, pred_verbs, pred_ttcs):
-        """Obtains detections"""
+    def postprocess(
+        self,
+        pred_boxes: list[npt.NDArray[np.float32]],
+        pred_object_labels: list[npt.NDArray[np.int32]],
+        pred_object_scores: list[npt.NDArray[np.float32]],
+        pred_verbs: list[npt.NDArray[np.float32]],
+        pred_ttcs: list[npt.NDArray[np.float32]],
+    ) -> tuple[list[npt.NDArray[np.float32]], list[dict[str, npt.NDArray[np.float32]]]]:
+        """Obtains detections."""
         detections = []
         raw_predictions = []
 
         for orig_boxes, orig_object_labels, object_scores, verb_scores, ttcs in zip(
-            pred_boxes, pred_object_labels, pred_object_scores, pred_verbs, pred_ttcs
+            pred_boxes, pred_object_labels, pred_object_scores, pred_verbs, pred_ttcs, strict=False
         ):
             if verb_scores.shape[0] > 0:
                 verb_predictions = verb_scores.argmax(-1)
