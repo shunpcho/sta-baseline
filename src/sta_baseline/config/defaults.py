@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
 """Configs."""
 
 from fvcore.common.config import CfgNode
@@ -836,7 +833,7 @@ _C.EGO4D_STA.VIDEO_LOAD_BACKEND = "lmdb"  # lmdb, pytorchvideo, decord, pyav
 # TODO: STA: _C.EGO4D_STA.VIDEO_LOAD_BACKEND = "pytorchvideo" #lmdb, pytorchvideo, decord
 
 
-def _assert_and_infer_cfg(cfg):
+def _assert_and_infer_cfg(cfg: CfgNode) -> CfgNode:
     # BN assertions.
     if cfg.BN.USE_PRECISE_STATS:
         assert cfg.BN.NUM_BATCHES_PRECISE >= 0
@@ -858,6 +855,6 @@ def _assert_and_infer_cfg(cfg):
     return cfg
 
 
-def get_cfg():
+def get_cfg() -> CfgNode:
     """Get a copy of the default config."""
     return _assert_and_infer_cfg(_C.clone())
