@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import NamedTuple
 
@@ -121,9 +122,66 @@ def test_sta_dataset(dummy_lmdb_and_detections: DummyPaths) -> None:
     dataset = Ego4dShortTermAnticipation(cfg, split=Split.TRAIN)
 
     assert len(dataset) == 1
-    uid, imgs, pred_boxes, verb_labels, ttc_targets, extra = dataset[0]
+    uid, imgs, pred_boxes, verb_labels, ttc_targets, _ = dataset[0]
     assert uid == f"{dummy_video_id}_0001136"
     assert imgs[0].shape == (3, 8, 32, 32)
     assert pred_boxes.shape == (1, 4)
     assert verb_labels.shape == (1,)
     assert ttc_targets.shape == (1,)
+
+
+def test_sta_dataset_skips_annotations_without_lmdb_clip(dummy_lmdb_and_detections: DummyPaths) -> None:
+    """Skip annotations whose clip frames are absent from the LMDB dataset."""
+    annotation_path = dummy_lmdb_and_detections.sta_annotation_path
+    annotations = json.loads(annotation_path.read_text(encoding="utf-8"))
+    missing_clip_annotation = annotations["annotations"][0].copy()
+    missing_clip_annotation["uid"] = "missing_clip_0000001"
+    missing_clip_annotation["clip_uid"] = "missing-clip"
+    annotations["annotations"].append(missing_clip_annotation)
+    annotation_path.write_text(json.dumps(annotations), encoding="utf-8")
+
+    cfg = CfgNode()
+    cfg.DATA = CfgNode()
+    cfg.DATA.SAMPLING_RATE = 1
+    cfg.DATA.NUM_FRAMES = 8
+    cfg.DATA.MEAN = [0.45, 0.45, 0.45]
+    cfg.DATA.STD = [0.225, 0.225, 0.225]
+    cfg.DATA.TARGET_FPS = 30
+    cfg.DATA.RANDOM_FLIP = True
+    cfg.DATA.TRAIN_CROP_SIZE = 32
+    cfg.DATA.TRAIN_JITTER_SCALES = [120, 120]
+    cfg.DATA.TEST_CROP_SIZE = 32
+    cfg.DATA.REVERSE_INPUT_CHANNEL = False
+
+    cfg.MODEL = CfgNode()
+    cfg.MODEL.NUM_CLASSES = [400]
+    cfg.MODEL.ARCH = "slow"
+    cfg.MODEL.SINGLE_PATHWAY_ARCH = ["slow"]
+    cfg.MODEL.MULTI_PATHWAY_ARCH = []
+
+    cfg.EGO4D_STA = CfgNode()
+    cfg.EGO4D_STA.BGR = False
+    cfg.EGO4D_STA.TRAIN_USE_COLOR_AUGMENTATION = False
+    cfg.EGO4D_STA.TRAIN_PCA_JITTER_ONLY = False
+    cfg.EGO4D_STA.TRAIN_PCA_EIGVAL = [0.225, 0.224, 0.229]
+    cfg.EGO4D_STA.TRAIN_PCA_EIGVEC = [
+        [-0.5675, 0.7192, 0.4009],
+        [-0.5808, -0.0045, -0.8140],
+        [-0.5836, 0.6948, -0.8140],
+    ]
+    cfg.EGO4D_STA.TEST_FORCE_FLIP = False
+    cfg.EGO4D_STA.RGB_LMDB_DIR = str(dummy_lmdb_and_detections.lmdb_path.parent)
+    cfg.EGO4D_STA.VIDEO_LOAD_BACKEND = "lmdb"
+    cfg.EGO4D_STA.OBJ_DETECTIONS = str(dummy_lmdb_and_detections.object_detections_path)
+    cfg.EGO4D_STA.DETECTION_SCORE_THRESH = 0.0
+    cfg.EGO4D_STA.PROPOSAL_APPEND_GT = False
+    cfg.EGO4D_STA.NAO_IOU_THRESH = 0.5
+    cfg.EGO4D_STA.VIDEOS_DIR = str(dummy_lmdb_and_detections.lmdb_path.parent)
+    cfg.EGO4D_STA.ANNOTATION_DIR = str(annotation_path.parent)
+    cfg.EGO4D_STA.TRAIN_LISTS = ["fho_sta_train.json"]
+    cfg.EGO4D_STA.VAL_LISTS = ["fho_sta_val.json"]
+    cfg.EGO4D_STA.TEST_LISTS = ["fho_sta_test_unannotated.json"]
+
+    dataset = Ego4dShortTermAnticipation(cfg, split=Split.TRAIN)
+
+    assert len(dataset) == 1
