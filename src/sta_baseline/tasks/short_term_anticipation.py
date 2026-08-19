@@ -47,9 +47,12 @@ class ShortTermAnticipationTask(VideoTask):
 
         # concatenate verb and ttc targets
         verb_labels = torch.cat(verb_labels, 0)
+        verb_labels = verb_labels.to(pred_verb.device)
         ttc_targets = torch.cat(ttc_targets, 0)
+        ttc_targets = ttc_targets.to(pred_ttc.device)
 
         valid_verbs = verb_labels != _IGNORE_VERB_LABEL
+        valid_verbs = valid_verbs.to(pred_verb.device)
         verb_labels = verb_labels[valid_verbs]
         pred_verb = pred_verb[valid_verbs]
 

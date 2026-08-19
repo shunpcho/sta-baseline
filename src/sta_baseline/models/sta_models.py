@@ -111,8 +111,9 @@ class ResNetSTARoIHead(nn.Module):
 
     def forward(self, inputs, bboxes):
         if bboxes.shape[0] == 0:  # handle cases in which zero boxes are passed as input
-            x_verb = torch.zeros((0, self.verb_projection.out_features))
-            x_ttc = torch.zeros((0, self.ttc_projection.out_features))
+            empty_output = inputs[0].sum() * 0
+            x_verb = empty_output.expand(0, self.verb_projection.out_features)
+            x_ttc = empty_output.expand(0, self.ttc_projection.out_features)
             return x_verb, x_ttc
         assert len(inputs) == self.num_pathways, f"Input tensor does not contain {self.num_pathways} pathway"
         pool_out = []
