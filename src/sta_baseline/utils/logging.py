@@ -19,6 +19,7 @@ def setup_logging(output_dir: str | None = None) -> None:
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
+    logging.getLogger("fsspec").setLevel(logging.WARNING)
 
     plain_formatter = logging.Formatter(
         "[%(asctime)s][%(levelname)s] %(name)s: %(lineno)4d: %(message)s",
